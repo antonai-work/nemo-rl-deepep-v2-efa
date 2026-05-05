@@ -136,6 +136,18 @@ Measured on 2× p5.48xlarge H100 EFA with full multi-stage image:
 Full per-step log lines are quoted in the three upstream PR bodies
 so reviewers without AWS access can verify the traceability.
 
+## Benchmarking
+
+If you want to isolate DeepEP D+C performance from end-to-end training,
+run the upstream DeepEP microbenchmarks inside the same image. The full
+dispatch+combine harness (`tests/elastic/test_ep.py`) gives you the
+~740 us p50 baseline on 2-node p5.48xlarge, and the low-latency harness
+(`tests/legacy/test_low_latency.py`) exercises the decoding-phase
+kernel. Both are covered in [`docs/DEEPEP-BENCHMARKS.md`](docs/DEEPEP-BENCHMARKS.md),
+including 2-node `kubectl exec` invocations, the flags that actually
+matter, and how to read the output against the `EP_EFA_MAX_QPS=2` /
+`EP_EFA_RDMA_GBS=25.0` envs baked into the image.
+
 ## Why a separate public repo?
 
 The three PRs in the upstream repos above are independent — each
