@@ -94,14 +94,16 @@ Cross-node GPU-to-GPU RDMA over EFA
 
 ### Why no V1 → V2 shim?
 
-Earlier iterations of this work used a Python-level
-V1-Buffer-to-V2-ElasticBuffer shim (see
-`integrations/api-shim/buffer_v1_compat.py` in the private
-development repo). The Megatron-LM patches (0004-0006) make the
-shim unnecessary by teaching Megatron to call V2 natively. The
-public repo does NOT ship a shim — Dockerfile explicitly asserts
+An earlier approach used a Python-level V1-Buffer-to-V2-ElasticBuffer
+compat shim that monkeypatched `deep_ep.Buffer` to delegate to
+`ElasticBuffer`. The Megatron-LM patches (0004-0006) make that shim
+unnecessary by teaching Megatron to call V2 natively. This repo does
+NOT ship a shim — Dockerfile explicitly asserts
 `DEEP_EP_USE_V2_SHIM=0` at runtime, and preflight verifies no
-`/opt/api-shim` directory exists.
+`/opt/api-shim` directory exists. If a future workload needs the
+shim back, the `HAVE_DEEP_EP_V2` probe in `fused_a2a.py` falls back
+to the V1 `Buffer` class automatically; set `DEEP_EP_USE_V2_SHIM=1`
+only if you've manually installed a shim.
 
 ### Why `b306af0` for DeepEP?
 

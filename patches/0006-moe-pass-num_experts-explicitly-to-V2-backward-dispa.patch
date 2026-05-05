@@ -1,6 +1,6 @@
-From cbacb0bbf2a73ed28ffcfcff61beddd31ed6ea76 Mon Sep 17 00:00:00 2001
-From: Shape Y Executor <shapeY@deepep-v2-integration>
-Date: Tue, 5 May 2026 16:54:49 +0000
+From 1aa3a7ec76f255ce23cbcc94dbd8a7d49dcbb49d Mon Sep 17 00:00:00 2001
+From: Anton Alexander <antonai@users.noreply.github.com>
+Date: Tue, 5 May 2026 18:58:04 +0000
 Subject: [PATCH 6/6] moe: pass num_experts explicitly to V2 backward dispatch
 
 V2 ElasticBuffer.dispatch at elastic.py:768 calls get_theoretical_num_sms
@@ -15,10 +15,10 @@ Fix: extract num_experts from handle.num_experts and pass explicitly.
  1 file changed, 6 insertions(+)
 
 diff --git a/megatron/core/transformer/moe/fused_a2a.py b/megatron/core/transformer/moe/fused_a2a.py
-index be641e7bf..ce351fb4f 100644
+index c60000608..6bc7b3d8f 100644
 --- a/megatron/core/transformer/moe/fused_a2a.py
 +++ b/megatron/core/transformer/moe/fused_a2a.py
-@@ -420,6 +420,10 @@ class FusedCombine(torch.autograd.Function):
+@@ -421,6 +421,10 @@ class FusedCombine(torch.autograd.Function):
              # V2 dispatch reuses the forward handle; backward receives a
              # 5-tuple (recv_x, recv_topk_idx, recv_topk_weights, handle,
              # event). We only need the first element (grad_x).
@@ -29,7 +29,7 @@ index be641e7bf..ce351fb4f 100644
              _prev_evt = None
              _alloc_on_comm = ctx.allocate_on_comm_stream
              if ctx.async_finish:
-@@ -428,9 +432,11 @@ class FusedCombine(torch.autograd.Function):
+@@ -429,9 +433,11 @@ class FusedCombine(torch.autograd.Function):
                      _alloc_on_comm = True
                  except Exception:
                      _prev_evt = None

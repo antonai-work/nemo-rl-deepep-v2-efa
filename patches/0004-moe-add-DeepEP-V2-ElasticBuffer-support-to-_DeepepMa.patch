@@ -1,6 +1,6 @@
-From d6b6e138ddc0bd5225f76694fbeb124ba79a479d Mon Sep 17 00:00:00 2001
-From: Shape Y Executor <shapeY@deepep-v2-integration>
-Date: Tue, 5 May 2026 16:35:34 +0000
+From b2f52d828d47dd08e0fa4f07337e587447bbb296 Mon Sep 17 00:00:00 2001
+From: Anton Alexander <antonai@users.noreply.github.com>
+Date: Tue, 5 May 2026 18:58:04 +0000
 Subject: [PATCH 4/6] moe: add DeepEP V2 ElasticBuffer support to
  _DeepepManager
 MIME-Version: 1.0
@@ -21,8 +21,10 @@ unchanged. `_DeepepManager` itself (token_dispatcher.py) does not
 change — all V2-specific knowledge lives in this one file.
 
 Why:
-- Consumers already use V2 via a downstream compatibility shim
-  (https://github.com/antonai-work/deepep-v2-integration). Validated
+- Consumers already use V2 via a downstream compatibility shim. A
+  full reproducible recipe (Dockerfile + k8s manifest + training
+  driver) is published at
+  https://github.com/antonai-work/nemo-rl-deepep-v2-efa. Validated
   on 2-node p5.48xlarge + EFA with Qwen3-30B-A3B-BF16: loss decreased
   3 steps, real grad_norm, 0.8 GB cross-node EFA TX.
 - Removes the need for the downstream shim once this lands.
@@ -53,21 +55,22 @@ Test plan:
 - Existing `TestFlexDispatcher` in `test_token_dispatcher.py` runs
   under whichever DeepEP flavour is installed in the CI image.
 - Full 2-node D+C validation run against Qwen3-30B-A3B-BF16 on
-  H100 + EFA archived under
-  `deepep-v2-integration/bench/logs/megatron-shapeY-v2-validation-*`.
+  H100 + EFA is published as a reproducible recipe at
+  https://github.com/antonai-work/nemo-rl-deepep-v2-efa
+  (see docs/VALIDATION.md for the expected-output contract).
 
 Related:
 - DeepEP PR #605 (merged 2026-04-29)
 - DeepEP PR #612 (still open — AWS EFA auto-QP cap; not required
   on InfiniBand / NVLink fabrics).
 ---
- megatron/core/transformer/moe/fused_a2a.py    | 268 +++++++++++++++++-
+ megatron/core/transformer/moe/fused_a2a.py    | 269 +++++++++++++++++-
  .../moe/test_fused_a2a_deepep_v2.py           | 171 +++++++++++
- 2 files changed, 432 insertions(+), 7 deletions(-)
+ 2 files changed, 433 insertions(+), 7 deletions(-)
  create mode 100644 tests/unit_tests/transformer/moe/test_fused_a2a_deepep_v2.py
 
 diff --git a/megatron/core/transformer/moe/fused_a2a.py b/megatron/core/transformer/moe/fused_a2a.py
-index 39f50a4a6..8e44d0378 100644
+index 39f50a4a6..6c1cd6a76 100644
 --- a/megatron/core/transformer/moe/fused_a2a.py
 +++ b/megatron/core/transformer/moe/fused_a2a.py
 @@ -3,16 +3,38 @@
@@ -110,7 +113,7 @@ index 39f50a4a6..8e44d0378 100644
  import torch
  
  _buffer = None
-@@ -30,17 +52,94 @@ def get_hidden_bytes(x: torch.Tensor) -> int:
+@@ -30,17 +52,95 @@ def get_hidden_bytes(x: torch.Tensor) -> int:
      return x.size(1) * max(x.element_size(), 2)
  
  
@@ -120,8 +123,8 @@ index 39f50a4a6..8e44d0378 100644
 +# the cross-node Gin barrier (kHybridDispatchTag0) can hang with
 +# `signal: 1, target: 2`. Pinning at construction ensures template
 +# homogeneity across ranks (matches DeepEP `tests/elastic/test_ep.py`
-+# reference harness and the proven shim at
-+# deepep-v2-integration/api-shim/buffer_v1_compat.py:346-353).
++# reference harness; also used in the downstream reproduction at
++# https://github.com/antonai-work/nemo-rl-deepep-v2-efa).
 +_V2_NUM_MAX_TOKENS_PER_RANK = int(
 +    os.environ.get("MCORE_DEEPEP_V2_MAX_TOKENS_PER_RANK", "8192")
 +)
@@ -132,8 +135,9 @@ index 39f50a4a6..8e44d0378 100644
 +def _is_efa_environment() -> bool:
 +    """Detect AWS EFA fabric so we can prefer V2's MoE-shape ctor and
 +    auto-cap the Queue-Pair budget. The byte-pool ctor has been
-+    observed to hang the tag-6 Gin cross-node barrier on EFA (see
-+    deepep-v2-integration/docs/pr41183-pattern-validated.md)."""
++    observed to hang the tag-6 Gin cross-node barrier on EFA; the
++    MoE-shape ctor does not (validated downstream at
++    https://github.com/antonai-work/nemo-rl-deepep-v2-efa)."""
 +    return (
 +        os.environ.get("FI_PROVIDER", "") == "efa"
 +        or os.environ.get("DEEP_EP_BACKEND", "") == "nccl"
@@ -206,7 +210,7 @@ index 39f50a4a6..8e44d0378 100644
      num_nvl_bytes, num_rdma_bytes = 0, 0
      for config in (
          Buffer.get_dispatch_config(group.size()),
-@@ -86,6 +185,71 @@ class FusedDispatch(torch.autograd.Function):
+@@ -86,6 +186,71 @@ class FusedDispatch(torch.autograd.Function):
              previous_event = EventOverlap(EventHandle())
          # Calculate layout before actual dispatch
          buffer = get_buffer(group, get_hidden_bytes(x))
@@ -278,7 +282,7 @@ index 39f50a4a6..8e44d0378 100644
          (
              num_tokens_per_rank,
              num_tokens_per_rdma_rank,
-@@ -143,6 +307,34 @@ class FusedDispatch(torch.autograd.Function):
+@@ -143,6 +308,34 @@ class FusedDispatch(torch.autograd.Function):
          """Backward pass of fused dispatch."""
          buffer = get_buffer(ctx.group, get_hidden_bytes(grad_output))
          handle = ctx.handle
@@ -313,7 +317,7 @@ index 39f50a4a6..8e44d0378 100644
          previous_event = None
          if ctx.async_finish:
              previous_event = EventOverlap(EventHandle())
-@@ -166,10 +358,37 @@ class FusedCombine(torch.autograd.Function):
+@@ -166,10 +359,37 @@ class FusedCombine(torch.autograd.Function):
      @staticmethod
      def forward(ctx, x, group, handle, async_finish=False, allocate_on_comm_stream=False):
          """Forward pass of fused combine."""
@@ -352,7 +356,7 @@ index 39f50a4a6..8e44d0378 100644
          combined_x, _, after_event = buffer.combine(
              x,
              handle=handle,
-@@ -190,10 +409,37 @@ class FusedCombine(torch.autograd.Function):
+@@ -190,10 +410,37 @@ class FusedCombine(torch.autograd.Function):
      @staticmethod
      def backward(ctx, grad_output, previous_event=None):
          """Backward pass of fused combine."""
@@ -391,7 +395,7 @@ index 39f50a4a6..8e44d0378 100644
          grad_x, _, _, _, _, after_event = buffer.dispatch(
              grad_output.contiguous(),
              handle=ctx.handle,
-@@ -207,7 +453,7 @@ class FusedCombine(torch.autograd.Function):
+@@ -207,7 +454,7 @@ class FusedCombine(torch.autograd.Function):
          return grad_x, None, None, None, None
  
  
@@ -400,7 +404,7 @@ index 39f50a4a6..8e44d0378 100644
  
      def fused_dispatch(
          x,
-@@ -256,8 +502,16 @@ if HAVE_DEEP_EP:
+@@ -256,8 +503,16 @@ if HAVE_DEEP_EP:
          return FusedCombine.apply(x, group, handle, async_finish, allocate_on_comm_stream)
  
      def set_deepep_num_sms(num_sms):

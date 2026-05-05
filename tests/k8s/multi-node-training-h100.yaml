@@ -72,7 +72,10 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: trainer
-          image: 058264135704.dkr.ecr.us-east-2.amazonaws.com/nemo-rl-fullstack:allprs-20260505
+          # Replace with your own ECR or other registry path after building
+          # via docker/build.sh. Example format:
+          #   <account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>
+          image: REPLACE_WITH_YOUR_ECR/nemo-rl-deepep-v2-efa:allprs-<shortsha>
           imagePullPolicy: IfNotPresent
           command: ["sleep", "infinity"]
           env:

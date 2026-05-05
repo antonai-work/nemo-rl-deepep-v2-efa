@@ -1,133 +1,72 @@
 #!/usr/bin/env bash
 #
-# nemo-rl-fullstack - local + CodeBuild build driver.
+# Build the all-PRs-applied nemo-rl-deepep-v2-efa image.
 #
-# Builds the "all-PRs-applied" E2E image from the Dockerfile in this
-# directory. Mirrors the dynamo-inference build.sh shape so CodeBuild and
-# local iteration share one entrypoint (gist
-# e03bab9e96d0f8933f6dc15d02894b91, section "Local build (dev iteration)").
-#
-# Docker build context is the REPO ROOT (not this directory) because the
-# Dockerfile COPYs from api-shim/, scripts/shared/, integrations/megatron-
-# deepep-v2/, and integrations/nemo-rl-fullstack/.
+# Produces a single image that layers:
+#   - nvidia/cuda:12.9.0-devel-ubuntu24.04 (Docker Hub public)
+#   - aws-efa-installer 1.48.0
+#   - aws-ofi-nccl @ 6e504db (source-built)
+#   - NCCL 2.30.4 (pip)
+#   - DeepEP V2 + patches 0001-0003 (PR #612)
+#   - Megatron-LM + patches 0004-0006 (PR #4632)
+#   - NeMo-RL + patch 0007 (PR #2410)
 #
 # Usage:
-#   ./build.sh [--tag TAG] [--repo-root DIR] [--registry REG] [--push] [--no-cache]
+#   ./docker/build.sh <image-tag>
 #
 # Examples:
-#   # Local dev (from integrations/nemo-rl-fullstack):
-#   ./build.sh --tag allprs-$(git rev-parse --short HEAD)
+#   ./docker/build.sh nemo-rl-deepep-v2-efa:latest
+#   ./docker/build.sh 123456789012.dkr.ecr.us-east-2.amazonaws.com/nemo-rl-deepep-v2-efa:allprs-$(git rev-parse --short HEAD)
 #
-#   # CodeBuild (from anywhere, pointing at repo root):
-#   ./build.sh --tag allprs-${SHA} --repo-root ${CODEBUILD_SRC_DIR} --no-push
+# After build, validate with:
+#   docker run --rm <image-tag> bash /opt/docker/preflight.sh
+#   -> expected: 5/5 checks PASS
+#
+# To push:
+#   docker push <image-tag>
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-
-TAG="latest"
-REPO_ROOT="${DEFAULT_REPO_ROOT}"
-REGISTRY=""
-PUSH=false
-NO_CACHE=false
-IMAGE_NAME="nemo-rl-fullstack"
-
-print_usage() {
-  cat <<EOF
-Usage: $0 [OPTIONS]
-
-Build the nemo-rl-fullstack image (all upstream PRs applied, no shim).
-
-Options:
-  -t, --tag TAG              Image tag (default: latest). For CodeBuild use
-                             "allprs-\${SHA}".
-  -r, --repo-root DIR        Repo root to use as docker build context
-                             (default: ../../ relative to this script).
-      --registry REG         Optional ECR registry prefix
-                             (058264135704.dkr.ecr.us-east-2.amazonaws.com).
-  -p, --push                 Push to registry after build.
-  -n, --no-cache             Build without Docker cache.
-      --no-push              Explicit no-push (default; exists for CodeBuild
-                             parity with dynamo-inference --no-extract).
-  -h, --help                 Show this message.
-
-Examples:
-  # Local rebuild at head SHA:
-  $0 --tag allprs-\$(git -C "${DEFAULT_REPO_ROOT}" rev-parse --short HEAD)
-
-  # CodeBuild invocation:
-  $0 --tag allprs-\${SHA} --repo-root \${CODEBUILD_SRC_DIR} --no-push
-EOF
-}
-
-while [[ $# -gt 0 ]]; do
-  case $1 in
-    -t|--tag)        TAG="$2";        shift 2 ;;
-    -r|--repo-root)  REPO_ROOT="$2";  shift 2 ;;
-    --registry)      REGISTRY="$2";   shift 2 ;;
-    -p|--push)       PUSH=true;       shift ;;
-    --no-push)       PUSH=false;      shift ;;
-    -n|--no-cache)   NO_CACHE=true;   shift ;;
-    -h|--help)       print_usage; exit 0 ;;
-    *)               echo "Unknown arg: $1" >&2; print_usage; exit 1 ;;
-  esac
-done
-
-CACHE_OPT=""
-if [ "$NO_CACHE" = "true" ]; then
-  CACHE_OPT="--no-cache"
+if [ $# -lt 1 ]; then
+  echo "Usage: $0 <image-tag>" >&2
+  echo "Example: $0 nemo-rl-deepep-v2-efa:latest" >&2
+  exit 1
 fi
 
-DOCKERFILE="${REPO_ROOT}/integrations/nemo-rl-fullstack/Dockerfile"
+IMAGE_TAG="$1"
+shift
+EXTRA_ARGS=("$@")
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DOCKERFILE="${REPO_ROOT}/docker/Dockerfile"
+
 if [ ! -f "${DOCKERFILE}" ]; then
   echo "ERROR: expected Dockerfile at ${DOCKERFILE}" >&2
   exit 1
 fi
 
-# The Dockerfile COPYs /tmp/nemo-rl-pr-prep.final.patch from this
-# directory (see Dockerfile comments). If the file is not staged, surface
-# a helpful error rather than letting docker fail mid-build.
-PATCH_FILE="${REPO_ROOT}/integrations/nemo-rl-fullstack/nemo-rl-pr-prep.final.patch"
-if [ ! -f "${PATCH_FILE}" ]; then
-  echo "WARN: ${PATCH_FILE} is missing." >&2
-  echo "      The Dockerfile COPYs this file from integrations/nemo-rl-fullstack/." >&2
-  echo "      For CodeBuild runs: ensure the patch is committed to the repo." >&2
-  echo "      For local runs: cp /tmp/nemo-rl-pr-prep.final.patch \"${PATCH_FILE}\"" >&2
-  exit 1
-fi
-
-echo "[build.sh] Dockerfile:        ${DOCKERFILE}"
-echo "[build.sh] Context (root):    ${REPO_ROOT}"
-echo "[build.sh] Image:             ${IMAGE_NAME}:${TAG}"
-
-# Prereq check: the Dockerfile does FROM deepep-base-v2:latest. The
-# CodeBuild pre_build phase re-tags the ECR base image to this name; in
-# local dev you have to have built the base separately.
-if ! docker image inspect "deepep-base-v2:latest" >/dev/null 2>&1; then
-  echo "ERROR: deepep-base-v2:latest is not in local docker. Build it first:" >&2
-  echo "       cd ${REPO_ROOT} && ./base/deepep-base-v2/build.sh" >&2
-  exit 1
-fi
-
-DOCKER_BUILDKIT=1 docker build ${CACHE_OPT} \
-  -f "${DOCKERFILE}" \
-  -t "${IMAGE_NAME}:${TAG}" \
-  "${REPO_ROOT}"
-
-if [ -n "${REGISTRY}" ]; then
-  docker tag "${IMAGE_NAME}:${TAG}" "${REGISTRY}/${IMAGE_NAME}:${TAG}"
-  echo "[build.sh] Tagged: ${REGISTRY}/${IMAGE_NAME}:${TAG}"
-fi
-
-if [ "${PUSH}" = "true" ]; then
-  if [ -z "${REGISTRY}" ]; then
-    echo "ERROR: --push requires --registry" >&2
+# Sanity-check all seven patches are present.
+for N in 0001 0002 0003 0004 0005 0006 0007; do
+  MATCH=$(ls "${REPO_ROOT}/patches/${N}-"*.patch 2>/dev/null | head -1)
+  if [ -z "${MATCH}" ]; then
+    echo "ERROR: missing patch ${N}-*.patch in ${REPO_ROOT}/patches/" >&2
     exit 1
   fi
-  docker push "${REGISTRY}/${IMAGE_NAME}:${TAG}"
-  echo "[build.sh] Pushed: ${REGISTRY}/${IMAGE_NAME}:${TAG}"
-fi
+done
 
-echo "[build.sh] done."
-docker images "${IMAGE_NAME}" --filter "reference=${IMAGE_NAME}:${TAG}"
+echo "[build.sh] Dockerfile:    ${DOCKERFILE}"
+echo "[build.sh] Build context: ${REPO_ROOT}"
+echo "[build.sh] Image tag:     ${IMAGE_TAG}"
+echo "[build.sh] Patches:       $(ls "${REPO_ROOT}/patches/"*.patch | wc -l) present"
+echo ""
+
+DOCKER_BUILDKIT=1 docker build \
+  -f "${DOCKERFILE}" \
+  -t "${IMAGE_TAG}" \
+  "${EXTRA_ARGS[@]}" \
+  "${REPO_ROOT}"
+
+echo ""
+echo "[build.sh] Built ${IMAGE_TAG}"
+echo "[build.sh] Validate: docker run --rm ${IMAGE_TAG} bash /opt/docker/preflight.sh"

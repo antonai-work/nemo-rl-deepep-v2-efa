@@ -1,6 +1,6 @@
-From cf18f726857c6fbbe2ab021b171cd3babf8d64ec Mon Sep 17 00:00:00 2001
-From: Shape Y Executor <shapeY@deepep-v2-integration>
-Date: Tue, 5 May 2026 16:39:30 +0000
+From f59879c29a152108dd1f6c3c695a3d196ba1125e Mon Sep 17 00:00:00 2001
+From: Anton Alexander <antonai@users.noreply.github.com>
+Date: Tue, 5 May 2026 18:58:04 +0000
 Subject: [PATCH 5/6] moe: graceful fallback for EventOverlap import under
  DeepEP V2
 
@@ -12,7 +12,7 @@ the submodule path so fused_a2a loads under V2-only installs.
  1 file changed, 9 insertions(+), 4 deletions(-)
 
 diff --git a/megatron/core/transformer/moe/fused_a2a.py b/megatron/core/transformer/moe/fused_a2a.py
-index 8e44d0378..be641e7bf 100644
+index 6c1cd6a76..c60000608 100644
 --- a/megatron/core/transformer/moe/fused_a2a.py
 +++ b/megatron/core/transformer/moe/fused_a2a.py
 @@ -29,11 +29,16 @@ try:
