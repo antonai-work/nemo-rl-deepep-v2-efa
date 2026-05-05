@@ -25,11 +25,13 @@
 # the framework layer (Megatron-LM + NeMo-RL + patches) is single-sourced.
 #
 # Framework-layer pinned sources (both paths):
-#   Megatron-LM    dmvevents/Megatron-LM@cbacb0bbf on branch
+#   Megatron-LM    dmvevents/Megatron-LM@1aa3a7ec on branch
 #                  deepep-v2-elasticbuffer-support (PR #4632 = vanilla
 #                  Megatron 23dd639c + 3 Shape Y commits: ElasticBuffer
 #                  support, EventOverlap fallback, num_experts-explicit
-#                  backward dispatch).
+#                  backward dispatch). SHA bumped from cbacb0bbf after
+#                  the branch was rebased on 2026-05-05; content is the
+#                  same 3-commit stack.
 #   NeMo-RL        NVIDIA-NeMo/RL@46be4e8 + patch 0007 (PR #2410,
 #                  LD_LIBRARY_PATH fix for EFA+OFI discovery, closes #1973).
 #   SGLang         no direct pin here; sibling repo sgl-project/sglang PR
@@ -344,7 +346,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # -----------------------------------------------------------------------------
 ARG MEGATRON_FORK=https://github.com/dmvevents/Megatron-LM.git
 ARG MEGATRON_BRANCH=deepep-v2-elasticbuffer-support
-ARG MEGATRON_SHA=cbacb0bbf2a73ed28ffcfcff61beddd31ed6ea76
+ARG MEGATRON_SHA=1aa3a7ec76f255ce23cbcc94dbd8a7d49dcbb49d
 
 RUN set -eux; \
     git clone "${MEGATRON_FORK}" /opt/Megatron-LM; \
@@ -353,6 +355,7 @@ RUN set -eux; \
     test "$(git rev-parse HEAD)" = "${MEGATRON_SHA}" \
       || (echo "Megatron SHA drift: expected ${MEGATRON_SHA}, got $(git rev-parse HEAD)" && exit 1); \
     pip install --no-cache-dir --break-system-packages --no-deps -e .; \
+    pip install --no-cache-dir --break-system-packages packaging; \
     python3 -c "from megatron.core.transformer.moe.fused_a2a import HAVE_DEEP_EP_V2; \
                 assert HAVE_DEEP_EP_V2, 'HAVE_DEEP_EP_V2 probe failed'; \
                 print('Megatron Shape Y OK: HAVE_DEEP_EP_V2 =', HAVE_DEEP_EP_V2)"
