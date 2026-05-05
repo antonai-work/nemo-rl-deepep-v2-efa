@@ -1,0 +1,176 @@
+# 2-node H100 p5.48xlarge "all PRs applied" E2E training StatefulSet.
+# Namespace: nemo-rl-fullstack (isolated).
+# Image: nemo-rl-fullstack:allprs-20260505 (see Dockerfile in this directory).
+#
+# Goal: prove the three upstream PRs (DeepEP PR #612 + Megatron Shape Y PR +
+#       NeMo-RL LD fix PR) compose into a working training stack on EFA,
+#       WITHOUT the api-shim fallback.
+#
+# Env invariants (validated at preflight):
+#   - DEEP_EP_USE_V2_SHIM=0
+#   - /opt/api-shim does NOT exist
+#   - HAVE_DEEP_EP_V2=True
+#   - libnccl-net-ofi.so on ldconfig path
+#
+# Based on: bench/logs/megatron-shapeY-v2-validation-20260505T165839Z/03-deploy-yaml.yaml
+# (proven-working Shape Y config, 2026-05-05).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nemo-rl-fullstack
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nemo-rl-fullstack-headless
+  namespace: nemo-rl-fullstack
+spec:
+  clusterIP: None
+  selector:
+    app: nemo-rl-fullstack
+  ports:
+    - name: torch
+      port: 29500
+      targetPort: 29500
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nemo-rl-fullstack
+  namespace: nemo-rl-fullstack
+spec:
+  serviceName: nemo-rl-fullstack-headless
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: nemo-rl-fullstack
+  template:
+    metadata:
+      labels:
+        app: nemo-rl-fullstack
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 30
+      nodeSelector:
+        node.kubernetes.io/instance-type: ml.p5.48xlarge
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        - key: vpc.amazonaws.com/efa
+          operator: Exists
+          effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: nemo-rl-fullstack
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: trainer
+          image: 058264135704.dkr.ecr.us-east-2.amazonaws.com/nemo-rl-fullstack:allprs-20260505
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "infinity"]
+          env:
+            # No-shim invariants. These are already baked into the image's
+            # ENV block; repeat here so they show in `kubectl describe pod`.
+            - name: DEEP_EP_USE_V2_SHIM
+              value: "0"
+            # PYTHONPATH is image-set to /opt/Megatron-LM:/opt/NeMo-RL --
+            # no api-shim entry. Re-state here for visibility.
+            - name: PYTHONPATH
+              value: /opt/Megatron-LM:/opt/NeMo-RL
+            # DeepEP V2 + NCCL Gin envs (mirror Shape Y working recipe).
+            - name: NCCL_NET_PLUGIN
+              value: /opt/aws-ofi-nccl/lib/libnccl-net-ofi.so
+            - name: NCCL_GIN_TYPE
+              value: "2"
+            - name: NCCL_GIN_ENABLE
+              value: "1"
+            - name: NCCL_CUMEM_ENABLE
+              value: "1"
+            - name: NCCL_CUMEM_HOST_ENABLE
+              value: "1"
+            - name: NCCL_NVLS_ENABLE
+              value: "0"
+            - name: NCCL_IGNORE_DISABLED_P2P
+              value: "1"
+            - name: NCCL_SOCKET_IFNAME
+              value: enp
+            - name: NCCL_TUNER_PLUGIN
+              value: ""
+            - name: FI_PROVIDER
+              value: efa
+            - name: FI_EFA_USE_DEVICE_RDMA
+              value: "1"
+            - name: FI_EFA_ENABLE_SHM_TRANSFER
+              value: "0"
+            - name: OFI_NCCL_PROTOCOL
+              value: RDMA
+            - name: OFI_NCCL_GIN_MAX_REQUESTS
+              value: "512"
+            - name: DEEP_EP_BACKEND
+              value: nccl
+            - name: EP_EFA_MAX_QPS
+              value: "2"
+            - name: EP_EFA_RDMA_GBS
+              value: "25.0"
+            # Shape Y num_max_tokens_per_rank pinning.
+            - name: MCORE_DEEPEP_V2_MAX_TOKENS_PER_RANK
+              value: "8192"
+            - name: MCORE_DEEPEP_V2_HIDDEN
+              value: "2048"
+            - name: MCORE_DEEPEP_V2_NUM_TOPK
+              value: "8"
+            - name: BASH_ENV
+              value: /dev/null
+            # NCCL debug so `NET/OFI Using Amazon EFA` shows in logs.
+            - name: NCCL_DEBUG
+              value: INFO
+            - name: NCCL_DEBUG_SUBSYS
+              value: INIT,NET
+          resources:
+            limits:
+              nvidia.com/gpu: "8"
+              vpc.amazonaws.com/efa: "4"
+            requests:
+              nvidia.com/gpu: "8"
+              vpc.amazonaws.com/efa: "4"
+          securityContext:
+            privileged: true
+            capabilities:
+              add:
+                - IPC_LOCK
+                - SYS_RESOURCE
+                - SYS_PTRACE
+                - SYS_ADMIN
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    if [ -f /etc/shinit_v2 ] && grep -q 'NCCL_NET_PLUGIN' /etc/shinit_v2; then
+                      sed -i 's|.*NCCL_NET_PLUGIN.*|# disabled by statefulset postStart|g' /etc/shinit_v2
+                    fi
+                    mkdir -p /work
+                    true
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /dev/gdrdrv
+              name: gdrdrv
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Gi
+        - name: gdrdrv
+          hostPath:
+            path: /dev/gdrdrv
+            type: CharDevice

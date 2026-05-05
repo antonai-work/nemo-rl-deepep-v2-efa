@@ -1,0 +1,41 @@
+From cf18f726857c6fbbe2ab021b171cd3babf8d64ec Mon Sep 17 00:00:00 2001
+From: Shape Y Executor <shapeY@deepep-v2-integration>
+Date: Tue, 5 May 2026 16:39:30 +0000
+Subject: [PATCH 5/6] moe: graceful fallback for EventOverlap import under
+ DeepEP V2
+
+V2 (PR #605) defines EventOverlap in deep_ep.utils.event but does not
+re-export it from deep_ep.utils (only EventHandle). Fall through to
+the submodule path so fused_a2a loads under V2-only installs.
+---
+ megatron/core/transformer/moe/fused_a2a.py | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/megatron/core/transformer/moe/fused_a2a.py b/megatron/core/transformer/moe/fused_a2a.py
+index 8e44d0378..be641e7bf 100644
+--- a/megatron/core/transformer/moe/fused_a2a.py
++++ b/megatron/core/transformer/moe/fused_a2a.py
+@@ -29,11 +29,16 @@ try:
+ except ImportError:
+     HAVE_DEEP_EP_V2 = False
+ 
+-# `EventHandle` / `EventOverlap` live in `deep_ep.utils` in both V1
+-# (PR #605 base) and V2, but the import is only safe when some
+-# flavour of deep_ep is installed.
++# `EventHandle` / `EventOverlap` live in `deep_ep.utils` in V1. In V2
++# (PR #605 onwards) `EventOverlap` is defined in `deep_ep.utils.event`
++# but is not re-exported from the package `__init__`. Import with
++# graceful fall-through so the module loads under either flavour.
+ if HAVE_DEEP_EP or HAVE_DEEP_EP_V2:
+-    from deep_ep.utils import EventHandle, EventOverlap  # noqa: F401
++    try:
++        from deep_ep.utils import EventHandle, EventOverlap  # noqa: F401
++    except ImportError:
++        from deep_ep.utils import EventHandle  # noqa: F401
++        from deep_ep.utils.event import EventOverlap  # noqa: F401
+ 
+ import torch
+ 
+-- 
+2.43.0
+

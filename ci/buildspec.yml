@@ -1,0 +1,103 @@
+version: 0.2
+
+# CodeBuild spec - nemo-rl-fullstack (all-PRs-applied E2E image).
+# Mirrors the dynamo-inference-public pattern from the awsi distribution-
+# review playbook (gist e03bab9e96d0f8933f6dc15d02894b91). All multi-line
+# logic is delegated to build.sh + ci/codebuild-post-build.sh so the
+# CodeBuild YAML parser does not get confused by shell heredocs (a known
+# pitfall called out in the playbook, section 5.3).
+#
+# Project env vars (set in the CodeBuild project, see ci/CODEBUILD-SETUP.md):
+#   AWS_ACCOUNT_ID                  058264135704            required
+#   AWS_DEFAULT_REGION              us-east-2               required
+#   ECR_REPO                        nemo-rl-fullstack       required
+#   BASE_ECR_REPO                   deepep-base-v2          required
+#                                   (the base image we FROM; built by a sibling
+#                                   CodeBuild project or pushed manually once.)
+#   CVE_ALLOW_CRITICAL              0|1                     default 0
+#   S3_SBOM_BUCKET                  s3://... (optional, no upload if unset)
+#
+# Required CodeBuild project settings:
+#   computeType   BUILD_GENERAL1_2XLARGE   (72 vCPU / 145 GB / 824 GB SSD)
+#   image         aws/codebuild/amazonlinux2-x86_64-standard:5.0
+#   privilegedMode: true                   (Docker-in-Docker)
+#   timeoutInMinutes: 120
+#
+# Why BUILD_GENERAL1_2XLARGE: the fullstack image layers Megatron + NeMo-RL +
+# ray[default] + transformers + Shape Y patch on top of deepep-base-v2
+# (CUDA 12.9 + EFA userspace + DeepEP V2 built from source). Total image
+# size ~35 GB; LARGE's 200 GB scratch overflows during `exporting layers`,
+# same failure mode as dynamo-inference combined build (playbook section 5.6).
+
+env:
+  variables:
+    ECR_REPO: "nemo-rl-fullstack"
+    BASE_ECR_REPO: "deepep-base-v2"
+    CVE_ALLOW_CRITICAL: "0"
+    S3_SBOM_BUCKET: ""
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - docker --version
+      - aws --version
+      - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.3
+      - trivy --version
+
+  pre_build:
+    commands:
+      - export ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+      - export SHA="${CODEBUILD_RESOLVED_SOURCE_VERSION:0:12}"
+      - export FULLSTACK_URI="${ECR}/${ECR_REPO}:allprs-${SHA}"
+      - export FULLSTACK_LATEST="${ECR}/${ECR_REPO}:latest"
+      - export BASE_URI="${ECR}/${BASE_ECR_REPO}:latest"
+      - 'echo "ECR=${ECR} SHA=${SHA}"'
+      - 'echo "fullstack target:  ${FULLSTACK_URI}"'
+      - 'echo "base dependency:   ${BASE_URI}"'
+      - aws ecr get-login-password --region "${AWS_DEFAULT_REGION}" | docker login --username AWS --password-stdin "${ECR}"
+      - aws ecr describe-repositories --repository-names "${ECR_REPO}" --region "${AWS_DEFAULT_REGION}" >/dev/null 2>&1 || aws ecr create-repository --repository-name "${ECR_REPO}" --region "${AWS_DEFAULT_REGION}" --image-scanning-configuration scanOnPush=true --encryption-configuration encryptionType=AES256
+      # Pull the base image this overlay depends on. If this fails, the
+      # sibling deepep-base-v2 project has not been run yet — surface the
+      # error clearly rather than letting the build hit a missing FROM.
+      - docker pull "${BASE_URI}"
+      - docker tag  "${BASE_URI}" "deepep-base-v2:latest"
+      # Pre-pull the previous fullstack :latest (if any) for BuildKit
+      # layer cache. First run has no cache; ignore failure.
+      - docker pull "${FULLSTACK_LATEST}" 2>/dev/null || echo "  no cached fullstack image - first build"
+
+  build:
+    commands:
+      - cd "${CODEBUILD_SRC_DIR}/integrations/nemo-rl-fullstack"
+      - chmod +x build.sh
+      # Build from the REPO ROOT so api-shim/, scripts/shared/, and the
+      # sibling integrations/megatron-deepep-v2/train_step_shapeY.py are in
+      # the docker build context (same constraint as megatron-deepep-v2).
+      - DOCKER_BUILDKIT=1 ./build.sh --tag "allprs-${SHA}" --repo-root "${CODEBUILD_SRC_DIR}" --no-push
+      - docker tag "${ECR_REPO}:allprs-${SHA}" "${FULLSTACK_URI}"
+      - docker tag "${ECR_REPO}:allprs-${SHA}" "${FULLSTACK_LATEST}"
+
+  post_build:
+    commands:
+      # Exports do NOT persist across CodeBuild phases (playbook 5.4).
+      # Re-derive here.
+      - export ECR="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+      - export SHA="${CODEBUILD_RESOLVED_SOURCE_VERSION:0:12}"
+      - export FULLSTACK_URI="${ECR}/${ECR_REPO}:allprs-${SHA}"
+      - export FULLSTACK_LATEST="${ECR}/${ECR_REPO}:latest"
+      # cwd also does not persist (playbook 5.5).
+      - cd "${CODEBUILD_SRC_DIR}/integrations/nemo-rl-fullstack"
+      - chmod +x ci/codebuild-post-build.sh
+      - ./ci/codebuild-post-build.sh
+
+artifacts:
+  files:
+    - integrations/nemo-rl-fullstack/cve-reports/**/*
+    - integrations/nemo-rl-fullstack/sbom-out/**/*
+    - integrations/nemo-rl-fullstack/validation-out/**/*
+  name: nemo-rl-fullstack-$CODEBUILD_RESOLVED_SOURCE_VERSION
+
+cache:
+  paths:
+    - /root/.docker/**/*
