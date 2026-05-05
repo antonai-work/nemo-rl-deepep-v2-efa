@@ -34,16 +34,17 @@ over AWS EFA — end-to-end validated 2026-05-05.
 
 ## Upstream PRs
 
-Three PRs, one per upstream repo:
+Three PRs filed 2026-04-28 through 2026-05-05, one per upstream repo:
 
-| Upstream repo | PR | Status | Patches |
+| Upstream repo | PR | Status (2026-05-05) | Patches |
 |---|---|---|---|
-| [`deepseek-ai/DeepEP`](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN, 3 commits | `patches/0001-0003` |
-| [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | _to be filed_ (see `docs/UPSTREAM-STATUS.md`) | READY | `patches/0004-0006` |
-| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | _to be filed_ (resurrection of closed PR #2359, closes #1973) | READY | `patches/0007` |
+| [`deepseek-ai/DeepEP`](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN, rebased 2026-05-05 | `patches/0001-0003` |
+| [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | DRAFT, filed 2026-05-05 | `patches/0004-0006` |
+| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | DRAFT, filed 2026-05-05 | `patches/0007` |
 
 All three are independent and safe on non-EFA fabrics. See
-`docs/UPSTREAM-STATUS.md` for live tracking of merge state.
+`docs/UPSTREAM-STATUS.md` for live tracking of merge state and detailed
+commit lists.
 
 ## Quick start
 
