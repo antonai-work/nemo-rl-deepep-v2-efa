@@ -422,8 +422,12 @@ RUN set -eux; \
 
 ENV PYTHONPATH=/opt/Megatron-LM:/opt/NeMo-RL
 
-# LD_LIBRARY_PATH: patch 0007's exact ENV line (EFA + OFI discoverable).
-ENV LD_LIBRARY_PATH="/opt/amazon/aws-ofi-nccl/lib:/opt/amazon/efa/lib:${LD_LIBRARY_PATH}"
+# LD_LIBRARY_PATH: make both OFI plugin locations discoverable so either
+# the source-built plugin (/opt/aws-ofi-nccl, selected by NCCL_NET_PLUGIN
+# below) or the installer-bundled NGC plugin (/opt/amazon/ofi-nccl)
+# resolves its own deps. /opt/amazon/aws-ofi-nccl does NOT exist in the
+# base image; the prior path was a typo (god-mode F2, fixed 2026-05-05).
+ENV LD_LIBRARY_PATH="/opt/aws-ofi-nccl/lib:/opt/amazon/ofi-nccl/lib:/opt/amazon/efa/lib:${LD_LIBRARY_PATH}"
 
 # Release-image runtime env: DEEP_EP_USE_V2_SHIM=0 (no shim, native V2), and
 # the baseline DeepEP MoE envs in case a consumer only inherits the release
