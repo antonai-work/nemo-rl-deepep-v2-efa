@@ -11,8 +11,8 @@ Last updated: 2026-05-05.
 | Repo | PR | State | Estimate |
 |---|---|---|---|
 | [`deepseek-ai/DeepEP`](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN | After 2026-04-28 + 7 days. Rebased + pinged 2026-05-05. |
-| [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | _to be filed (this week)_ | DRAFT | After public repo lands. |
-| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | _to be filed (this week)_ | DRAFT | After public repo lands. |
+| [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | DRAFT | Filed 2026-05-05. |
+| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | DRAFT | Filed 2026-05-05. |
 
 ## PR #612: DeepEP AWS EFA optimizations
 
@@ -42,9 +42,10 @@ Last updated: 2026-05-05.
 
 ## Megatron-LM PR (Shape Y)
 
-- **URL**: to be filed 2026-05-?? after the public repo is live
+- **URL**: https://github.com/NVIDIA/Megatron-LM/pull/4632
 - **Head branch**: `dmvevents/Megatron-LM:deepep-v2-elasticbuffer-support`
   (3 commits on top of `NVIDIA/Megatron-LM@main`)
+- **Filed**: 2026-05-05
 - **State**: DRAFT (validated standalone 2026-04-29 + validated as
   integrated stack 2026-05-05)
 
@@ -77,9 +78,10 @@ Bundled bug fix: resolves upstream issue #3999
 
 ## NeMo-RL PR (LD_LIBRARY_PATH)
 
-- **URL**: to be filed 2026-05-?? after the public repo is live
+- **URL**: https://github.com/NVIDIA-NeMo/RL/pull/2410
 - **Head branch**: `dmvevents/RL:aws-efa-deepep-support`
   (1 commit on top of `NVIDIA-NeMo/RL@46be4e8`)
+- **Filed**: 2026-05-05
 - **State**: DRAFT (validated as part of integrated stack
   2026-05-05)
 - **Related**: resurrects closed PR
