@@ -30,7 +30,10 @@ over AWS EFA — end-to-end validated 2026-05-05.
   check that proves MoE traffic went over EFA, not NVLink.
 - **`ci/`** — AWS CodeBuild spec for distribution-review-grade CI.
 - **`docs/`** — deeper explanations of architecture, validation,
-  and upstream status.
+  and upstream status. See
+  [`docs/EFA-TRAFFIC-EVIDENCE.md`](docs/EFA-TRAFFIC-EVIDENCE.md)
+  for the aggregated cross-node EFA hardware-counter proof across
+  all frameworks.
 
 ## Upstream PRs
 
@@ -161,6 +164,20 @@ into a working image."
 When all three PRs merge upstream, this repo's build chain reduces
 to vanilla clones (no patches needed). Until then, the patches in
 `patches/` let anyone reproduce the validated stack today.
+
+## Validation
+
+Full cross-framework verbatim evidence (loss curves, NCCL init
+markers, EFA counter deltas, image digests, SHA-256 hashes of raw
+log chunks) is inlined in
+[`docs/VALIDATION-EVIDENCE.md`](docs/VALIDATION-EVIDENCE.md). This
+covers Megatron-LM Shape Y training, the NeMo-RL full-stack E2E
+(no-shim native), the NeMo-RL rollout-shape shim path, and the
+SGLang V1-shim D+C contract.
+
+Inference-side evidence (vLLM + TRT-LLM) is in the sibling repo
+[`antonai-work/vllm-deepep-v2-efa`](https://github.com/antonai-work/vllm-deepep-v2-efa)
+under the same filename.
 
 ## License
 
