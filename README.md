@@ -13,11 +13,15 @@ over AWS EFA — end-to-end validated 2026-05-05.
 - **`patches/`** — seven standalone `.patch` files extracted from
   three upstream PRs we authored. Each patch has a header pointing
   at its open upstream PR.
-- **`docker/Dockerfile`** — single multi-stage build from
+- **`docker/Dockerfile`** — dual-path multi-stage build. Default
+  (fast) path pulls the pre-built base image from GHCR and adds the
+  NeMo-RL framework layer in ~5-10 minutes. Opt-in vanilla path
+  inlines the full 240-line base stack from
   `nvidia/cuda:12.9.0-devel-ubuntu24.04` through EFA + aws-ofi-nccl
-  + NCCL + GDRCopy + DeepEP V2 (patched) + Megatron-LM (patched) +
-  NeMo-RL (patched).
-- **`docker/build.sh`** — one-command build script.
+  + NCCL + GDRCopy + DeepEP V2 (patched) before the framework layer.
+  See [Fast vs From-vanilla build](#fast-vs-from-vanilla-build) below.
+- **`docker/build.sh`** — one-command build script with
+  `--mode fast|vanilla` flag.
 - **`docker/preflight.sh`** — five in-container validation gates
   that prove the stack is assembled correctly before you spend
   cluster time running it.
@@ -37,17 +41,33 @@ over AWS EFA — end-to-end validated 2026-05-05.
 
 ## Upstream PRs
 
-Three PRs filed 2026-04-28 through 2026-05-05, one per upstream repo:
+Five PRs filed 2026-04-28 through 2026-05-05, covering the training
+stack this repo assembles plus the inference-side companion work in
+the sibling [`vllm-deepep-v2-efa`](https://github.com/antonai-work/vllm-deepep-v2-efa)
+and SGLang:
 
 | Upstream repo | PR | Status (2026-05-05) | Patches |
 |---|---|---|---|
 | [`deepseek-ai/DeepEP`](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN, rebased 2026-05-05 | `patches/0001-0003` |
 | [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | DRAFT, filed 2026-05-05 | `patches/0004-0006` |
 | [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | DRAFT, filed 2026-05-05 | `patches/0007` |
+| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | [#2411](https://github.com/NVIDIA-NeMo/RL/pull/2411) | DRAFT, filed 2026-05-05 | rollout-shape contract (sibling repo) |
+| [`sgl-project/sglang`](https://github.com/sgl-project/sglang) | [#24443](https://github.com/sgl-project/sglang/pull/24443) | DRAFT, filed 2026-05-05 | V1-shim D+C contract (sibling repo) |
 
-All three are independent and safe on non-EFA fabrics. See
+All five are independent and safe on non-EFA fabrics. See
 `docs/UPSTREAM-STATUS.md` for live tracking of merge state and detailed
 commit lists.
+
+The three training-side PRs (#612, #4632, #2410) are consumed directly
+by this repo as `patches/0001-0007`. The two inference-side PRs (#2411,
+sglang#24443) are referenced here for cross-framework lineage; their
+verification evidence lives in
+[`antonai-work/vllm-deepep-v2-efa`](https://github.com/antonai-work/vllm-deepep-v2-efa).
+
+This repo also consumes the pre-built base image published from the
+sibling repo [`antonai-work/deepep-v2-efa-base`](https://github.com/antonai-work/deepep-v2-efa-base)
+for the fast build path. That repo carries the same `patches/0001-0003`
+for DeepEP PR #612; the fast path simply skips re-compiling them.
 
 ## Quick start
 
@@ -65,12 +85,24 @@ commit lists.
 ```bash
 git clone https://github.com/antonai-work/nemo-rl-deepep-v2-efa
 cd nemo-rl-deepep-v2-efa
-docker/build.sh                          # ~45 min cold build
-# Tag appears in build.sh output
+
+# Default (fast) path -- FROM ghcr.io/antonai-work/deepep-v2-efa-base:
+docker/build.sh --mode fast nemo-rl-deepep-v2-efa:latest       # ~5-10 min
+
+# From-vanilla path -- inline 240-line base stack, fully reproducible:
+docker/build.sh --mode vanilla nemo-rl-deepep-v2-efa:vanilla   # ~45 min
 ```
 
-The build script applies all 7 patches before compiling so you know
-you're getting vanilla upstream + exactly the three PRs linked above.
+Both modes produce byte-identical framework content (Megatron-LM +
+NeMo-RL + patches) on top of byte-identical base stacks. The vanilla
+mode inlines the full base recipe so GHCR is not required at build
+time. See [Fast vs From-vanilla build](#fast-vs-from-vanilla-build)
+for the full trade-off.
+
+The build script applies all 7 patches before compiling (vanilla mode)
+or relies on the base image's pre-applied DeepEP `patches/0001-0003`
+(fast mode), then adds `patches/0004-0007`. Either way you get vanilla
+upstream + exactly the five PRs linked above.
 
 ### Preflight (in-container)
 
@@ -140,6 +172,58 @@ Measured on 2× p5.48xlarge H100 EFA with full multi-stage image:
 Full per-step log lines are quoted in the three upstream PR bodies
 so reviewers without AWS access can verify the traceability.
 
+## Fast vs From-vanilla build
+
+`docker/Dockerfile` supports two build modes. Both select their base
+stack via Docker BuildKit's `BUILD_MODE` ARG + multi-stage `FROM
+base-${BUILD_MODE}` pattern, then add an identical framework layer on
+top. Pick based on your network posture and build-time budget.
+
+| Aspect | `--mode fast` (default) | `--mode vanilla` |
+|---|---|---|
+| Base image | `FROM ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a` | Inline 240-line stack from `nvidia/cuda:12.9.0-devel-ubuntu24.04` |
+| Build time | ~5-10 min (framework layer only) | ~45 min cold (compiles aws-ofi-nccl + DeepEP + Megatron + NeMo-RL) |
+| Network needs | GHCR pull (PAT with `read:packages` until the package flips public) | Docker Hub + efa-installer.amazonaws.com + GitHub clones only |
+| Reproducibility | Trusts the base image's SHA-digest | Fully reproducible from Dockerfile + repo contents |
+| Patches applied | `patches/0001-0003` baked into base; `patches/0004-0007` added here | All `patches/0001-0007` applied in this Dockerfile |
+| Use case | Iteration, CI, fast cluster deploy | Air-gapped builds, security review, first-time reproduction |
+
+Both paths pass the same `docker/preflight.sh` gate (5/5 checks). The
+AWS CodeBuild pipeline in `ci/buildspec.yml` exercises both modes on
+every commit so a drift between them is caught by CI.
+
+The base image digest pinned by the fast path is:
+
+```
+ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a
+  @ sha256:5083af841d926f63ff1eb98bdded6e3e23854330feabb53c9d910fff4899587c
+```
+
+The base repo is at
+[`antonai-work/deepep-v2-efa-base`](https://github.com/antonai-work/deepep-v2-efa-base).
+
+## Continuous integration
+
+An AWS CodeBuild pipeline lives in `ci/`:
+
+- `ci/buildspec.yml` — runs the fast-path build, runs the vanilla-path
+  build as a drift check, runs `docker/preflight.sh` inside both
+  images (must emit `5 PASS, 0 FAIL`), then pushes the fast tag to
+  ECR. Uses `BUILD_GENERAL1_2XLARGE` with `privilegedMode=true` on
+  `aws/codebuild/amazonlinux2-x86_64-standard:5.0`.
+- [`ci/CODEBUILD-SETUP.md`](ci/CODEBUILD-SETUP.md) — step-by-step
+  provisioning: ECR repo creation, IAM role trust + inline policy,
+  Secrets Manager entry for the GHCR PAT, `aws codebuild
+  create-project` invocation, and the webhook command to auto-build
+  on pushes to `main`. All account IDs, region, and repo names are
+  templated -- no hardcoded values.
+
+To trigger a build once the project is provisioned:
+
+```bash
+aws codebuild start-build --project-name <PROJECT_NAME>
+```
+
 ## Benchmarking
 
 If you want to isolate DeepEP D+C performance from end-to-end training,
@@ -154,16 +238,18 @@ matter, and how to read the output against the `EP_EFA_MAX_QPS=2` /
 
 ## Why a separate public repo?
 
-The three PRs in the upstream repos above are independent — each
-can be merged on its own schedule. But getting them to work
-together requires all three applied simultaneously to matched
-versions of their dependencies. This repo is the single source of
-truth for "what version of everything" and "how do I assemble it
-into a working image."
+The five upstream PRs linked above are independent — each can be
+merged on its own schedule. But getting the training-side three
+(#612, #4632, #2410) to work together requires all three applied
+simultaneously to matched versions of their dependencies. This repo
+is the single source of truth for "what version of everything" and
+"how do I assemble it into a working image."
 
-When all three PRs merge upstream, this repo's build chain reduces
+When the training PRs merge upstream, this repo's build chain reduces
 to vanilla clones (no patches needed). Until then, the patches in
-`patches/` let anyone reproduce the validated stack today.
+`patches/` let anyone reproduce the validated stack today. The
+inference-side PRs (#2411, sglang#24443) ship independently through
+the sibling `vllm-deepep-v2-efa` repo.
 
 ## Validation
 
@@ -182,13 +268,17 @@ under the same filename.
 ## License
 
 Apache 2.0. Patches under `patches/` inherit the license of their
-upstream repositories (Apache 2.0 for all three).
+upstream repositories (Apache 2.0 for all of DeepEP, Megatron-LM,
+NeMo-RL, and SGLang).
 
 ## Related repos and references
 
+- Sibling base repo: https://github.com/antonai-work/deepep-v2-efa-base
+- Sibling inference repo: https://github.com/antonai-work/vllm-deepep-v2-efa
 - Upstream DeepEP V2: https://github.com/deepseek-ai/DeepEP
 - Upstream Megatron-LM: https://github.com/NVIDIA/Megatron-LM
 - Upstream NeMo-RL: https://github.com/NVIDIA-NeMo/RL
+- Upstream SGLang: https://github.com/sgl-project/sglang
 - AWS EFA installer: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/efa-start.html
 - aws-ofi-nccl: https://github.com/aws/aws-ofi-nccl
 - NVIDIA Megatron-LM issue #2647 (EFA feature request):

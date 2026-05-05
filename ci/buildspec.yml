@@ -1,0 +1,118 @@
+# AWS CodeBuild buildspec for nemo-rl-deepep-v2-efa
+#
+# Purpose:
+#   End-to-end CI for the dual-path Docker build. Exercises both modes on
+#   every run so a drift between the GHCR base image and the inlined vanilla
+#   stack is caught by CI, not discovered on a customer cluster.
+#
+# Phases:
+#   install    : prepare Docker BuildKit + AWS CLI.
+#   pre_build  : log in to ECR (target) and GHCR (source for fast path).
+#                The GHCR PAT comes from Secrets Manager -- see
+#                ci/CODEBUILD-SETUP.md for provisioning.
+#   build      : (a) build the fast-path image and tag as :latest + allprs-SHA
+#                (b) build the vanilla-path image (build-only validation)
+#   post_build : (a) run /opt/docker/preflight.sh inside the fast image;
+#                    must emit "5/5 checks PASS" or the build fails.
+#                (b) push fast tag to ECR. Vanilla is build-only, never pushed.
+#
+# Required environment variables (set on the CodeBuild project, NOT here):
+#   AWS_ACCOUNT_ID            e.g. 123456789012
+#   AWS_REGION                e.g. us-east-2
+#   ECR_REPO                  ECR repo name, e.g. nemo-rl-deepep-v2-efa
+#   GHCR_READ_TOKEN_SECRET_ARN  Secrets Manager ARN carrying a GHCR PAT with
+#                             `read:packages` scope (can be omitted once the
+#                             deepep-v2-efa-base package is flipped to public).
+#
+# No account IDs, repo paths, or secrets are hardcoded below. All values are
+# templated from the environment.
+
+version: 0.2
+
+env:
+  variables:
+    DOCKER_BUILDKIT: "1"
+    # Fast-path base. If this image flips to public on GHCR the ghcr-login
+    # step becomes a no-op (the PAT secret is optional).
+    BASE_IMAGE_FAST: "ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a"
+
+phases:
+  install:
+    runtime-versions:
+      docker: 20
+    commands:
+      - echo "[install] docker version"
+      - docker version
+      - echo "[install] aws cli version"
+      - aws --version
+
+  pre_build:
+    commands:
+      - echo "[pre_build] Computing short SHA and tags"
+      - export SHORT_SHA="$(echo ${CODEBUILD_RESOLVED_SOURCE_VERSION} | cut -c1-7)"
+      - export ECR_REPO_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+      - export FAST_TAG="${ECR_REPO_URI}:allprs-${SHORT_SHA}"
+      - export LATEST_TAG="${ECR_REPO_URI}:latest"
+      - export VANILLA_TAG="${ECR_REPO_URI}:allprs-${SHORT_SHA}-vanilla"
+      - echo "[pre_build] SHORT_SHA=${SHORT_SHA}"
+      - echo "[pre_build] FAST_TAG=${FAST_TAG}"
+      - echo "[pre_build] VANILLA_TAG=${VANILLA_TAG}"
+      - echo "[pre_build] ECR login to ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - aws ecr get-login-password --region "${AWS_REGION}"
+          | docker login --username AWS --password-stdin
+          "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - |
+        if [ -n "${GHCR_READ_TOKEN_SECRET_ARN:-}" ]; then
+          echo "[pre_build] GHCR login using Secrets Manager PAT"
+          GHCR_PAT="$(aws secretsmanager get-secret-value \
+              --secret-id "${GHCR_READ_TOKEN_SECRET_ARN}" \
+              --region "${AWS_REGION}" \
+              --query SecretString --output text)"
+          echo "${GHCR_PAT}" | docker login ghcr.io \
+              --username antonai-work --password-stdin
+          unset GHCR_PAT
+        else
+          echo "[pre_build] GHCR_READ_TOKEN_SECRET_ARN unset; assuming base image is public"
+        fi
+      - echo "[pre_build] ECR repo describe (will be created by operator, see CODEBUILD-SETUP.md)"
+      - aws ecr describe-repositories --region "${AWS_REGION}" --repository-names "${ECR_REPO}" > /dev/null
+
+  build:
+    commands:
+      - echo "[build] Fast-path build -> ${FAST_TAG}"
+      - ./docker/build.sh --mode fast "${FAST_TAG}"
+      - docker tag "${FAST_TAG}" "${LATEST_TAG}"
+      - echo "[build] Vanilla-path build -> ${VANILLA_TAG} (build-only validation)"
+      - ./docker/build.sh --mode vanilla "${VANILLA_TAG}"
+
+  post_build:
+    commands:
+      - echo "[post_build] Running preflight inside fast image"
+      - |
+        set -e
+        PREFLIGHT_OUT="$(docker run --rm "${FAST_TAG}" bash /opt/docker/preflight.sh 2>&1 || true)"
+        echo "${PREFLIGHT_OUT}"
+        if ! echo "${PREFLIGHT_OUT}" | grep -q '5 PASS, 0 FAIL'; then
+          echo "[post_build] FAIL: preflight did not emit '5 PASS, 0 FAIL'"
+          exit 1
+        fi
+        echo "[post_build] Preflight 5/5 PASS"
+      - echo "[post_build] Running preflight inside vanilla image (build-validation only)"
+      - |
+        set -e
+        PREFLIGHT_OUT_V="$(docker run --rm "${VANILLA_TAG}" bash /opt/docker/preflight.sh 2>&1 || true)"
+        echo "${PREFLIGHT_OUT_V}"
+        if ! echo "${PREFLIGHT_OUT_V}" | grep -q '5 PASS, 0 FAIL'; then
+          echo "[post_build] FAIL: vanilla preflight did not emit '5 PASS, 0 FAIL'"
+          exit 1
+        fi
+        echo "[post_build] Vanilla preflight 5/5 PASS"
+      - echo "[post_build] Pushing fast tag to ECR (vanilla is build-only, not pushed)"
+      - docker push "${FAST_TAG}"
+      - docker push "${LATEST_TAG}"
+      - echo "[post_build] Done. Pushed ${FAST_TAG} and ${LATEST_TAG}"
+
+artifacts:
+  files:
+    - "**/*"
+  discard-paths: no
