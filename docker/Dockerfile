@@ -60,7 +60,7 @@
 # =============================================================================
 
 ARG BUILD_MODE=fast
-ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a
+ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.1-sm90a
 ARG BASE_IMAGE_VANILLA=nvidia/cuda:12.9.0-devel-ubuntu24.04
 
 # =============================================================================
