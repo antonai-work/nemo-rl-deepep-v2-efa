@@ -60,7 +60,7 @@
 # =============================================================================
 
 ARG BUILD_MODE=fast
-ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.2.1-sm90a
+ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.2.2-sm90a
 ARG BASE_IMAGE_VANILLA=nvidia/cuda:13.0.0-devel-ubuntu24.04
 
 # =============================================================================
@@ -187,7 +187,7 @@ RUN set -eux; \
 
 # Wave 13 cu13 cascade: NCCL wheel flavor sourced from pins.env
 # (NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4). Dockerfile default matches the
-# CUDA 13.0 runtime in the base image v0.2.1-sm90a. The prior Wave 9c cu12
+# CUDA 13.0 runtime in the base image v0.2.2-sm90a. The prior Wave 9c cu12
 # pin (HISTORICAL) matched the old CUDA 12.9 base; Wave 13 rebuilt base on
 # CUDA 13 so all artifacts share libcudart.so.13. Override with:
 #   docker build --build-arg NVIDIA_NCCL_PIN='nvidia-nccl-cu12>=2.30.4' ...
@@ -436,7 +436,7 @@ RUN pip install --no-cache-dir --break-system-packages \
 # -----------------------------------------------------------------------------
 # Wave 13 NVSHMEM guard: torchdata / transformers / ray pull in torch which
 # pins nvidia-nvshmem-cu13==3.4.5 and downgrades the base image's 3.6.5.
-# DeepEP V2 _C.so in v0.2.1-sm90a was linked against NVSHMEM 3.6.x (the symbol
+# DeepEP V2 _C.so in v0.2.2-sm90a was linked against NVSHMEM 3.6.x (the symbol
 # `nvshmem_selected_device_transport, version NVSHMEM` was introduced in 3.6).
 # Reinstall >= 3.6.0 after the pure-Python deps to restore the base ABI.
 # Also re-assert NCCL 2.30.4 in case the transitive torch install downgraded
