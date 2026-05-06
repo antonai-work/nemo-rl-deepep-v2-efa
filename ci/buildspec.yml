@@ -86,7 +86,7 @@ phases:
       # in ./pins.env at the repo root. docker/build.sh sources it and passes
       # --build-arg. This preflight check makes drift between pins.env and the
       # Dockerfile ARG defaults impossible to push green through CodeBuild.
-      - test -f pins.env || (echo "ERROR: pins.env missing at repo root" && exit 2)
+      - 'test -f pins.env || (echo "ERROR: pins.env missing at repo root" && exit 2)'
       - . ./pins.env
       - 'echo "[pre_build] pins.env DEEPEP_SHA=${DEEPEP_SHA:-<unset>}"'
       - 'echo "[pre_build] pins.env MEGATRON_SHA=${MEGATRON_SHA:-<unset>}"'
