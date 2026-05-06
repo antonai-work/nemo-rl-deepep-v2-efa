@@ -16,7 +16,7 @@
 #   --build-arg BUILD_MODE=vanilla
 #       Inline the full base stack (EFA userspace + NCCL + aws-ofi-nccl +
 #       GDRCopy + DeepEP V2 + patches) directly on top of
-#       nvidia/cuda:12.9.0-devel-ubuntu24.04, byte-identical to the base repo's
+#       nvidia/cuda:13.0.0-devel-ubuntu24.04, byte-identical to the base repo's
 #       Dockerfile at https://github.com/antonai-work/deepep-v2-efa-base.
 #       Use when you cannot reach GHCR or want end-to-end reproducibility
 #       from the vanilla NVIDIA CUDA image.
@@ -60,12 +60,12 @@
 # =============================================================================
 
 ARG BUILD_MODE=fast
-ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.2-sm90a
-ARG BASE_IMAGE_VANILLA=nvidia/cuda:12.9.0-devel-ubuntu24.04
+ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.2.1-sm90a
+ARG BASE_IMAGE_VANILLA=nvidia/cuda:13.0.0-devel-ubuntu24.04
 
 # =============================================================================
 # Stage 1a: base-fast
-#   Pull the pre-built base image from GHCR. Contains CUDA 12.9 + EFA 1.48.0 +
+#   Pull the pre-built base image from GHCR. Contains CUDA 13.0 + EFA 1.48.0 +
 #   aws-ofi-nccl @ 6e504db + NCCL 2.30.4 + GDRCopy 2.5.1 + DeepEP V2 + patches
 #   0001-0003. All LD paths and runtime env are already set.
 # =============================================================================
@@ -166,9 +166,9 @@ RUN set -eux; \
 # over building NCCL from source, so the JIT can find headers automatically)
 # -----------------------------------------------------------------------------
 RUN pip install --no-cache-dir --break-system-packages \
-      torch --index-url https://download.pytorch.org/whl/cu129 \
+      torch --index-url https://download.pytorch.org/whl/cu130 \
  || pip install --no-cache-dir --break-system-packages \
-      torch --index-url https://download.pytorch.org/whl/cu128
+      torch --index-url https://download.pytorch.org/whl/cu129
 
 # numpy<2 is required at runtime by torch.distributed.all_gather_object
 # (DeepEP V2's ElasticBuffer.__init__ calls it from get_nccl_comm_handle).
@@ -185,13 +185,13 @@ RUN set -eux; \
     rm -f /lib/x86_64-linux-gnu/libnccl.so* /usr/lib/x86_64-linux-gnu/libnccl.so*; \
     ldconfig
 
-# Wave 9c cu12 unification: NCCL wheel flavor sourced from pins.env
-# (NVIDIA_NCCL_PIN=nvidia-nccl-cu12>=2.30.4). Dockerfile default keeps cu12 to
-# match the CUDA 12.9 runtime in the base image. The prior hardcoded cu13
-# pin (HISTORICAL) diverged from the base's CUDA toolkit and is replaced by
-# the build-arg-driven value. Override with:
-#   docker build --build-arg NVIDIA_NCCL_PIN='nvidia-nccl-cu13>=2.30.4' ...
-ARG NVIDIA_NCCL_PIN=nvidia-nccl-cu12>=2.30.4
+# Wave 13 cu13 cascade: NCCL wheel flavor sourced from pins.env
+# (NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4). Dockerfile default matches the
+# CUDA 13.0 runtime in the base image v0.2.1-sm90a. The prior Wave 9c cu12
+# pin (HISTORICAL) matched the old CUDA 12.9 base; Wave 13 rebuilt base on
+# CUDA 13 so all artifacts share libcudart.so.13. Override with:
+#   docker build --build-arg NVIDIA_NCCL_PIN='nvidia-nccl-cu12>=2.30.4' ...
+ARG NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4
 RUN set -eux; \
     pip install --no-cache-dir --break-system-packages --no-deps \
       "${NVIDIA_NCCL_PIN}"; \
@@ -215,7 +215,7 @@ RUN set -eux; \
 # The wheel only ships libnvshmem_host.so.X (versioned), but DeepEP's link
 # line uses `-l:libnvshmem_host.so` (unversioned). Create the symlink.
 RUN pip install --no-cache-dir --break-system-packages \
-      "nvidia-nvshmem-cu12>=3.3.9" \
+      "nvidia-nvshmem-cu13>=3.3.9" \
  && NVSHMEM_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nvshmem/lib' -type d 2>/dev/null | head -1)" \
  && test -n "${NVSHMEM_LIB}" && test -d "${NVSHMEM_LIB}" \
  && ls "${NVSHMEM_LIB}" \
@@ -231,9 +231,11 @@ RUN pip install --no-cache-dir --break-system-packages \
 # with "received count: 0" on AWS EFA once num_allocated_qps >= 5. Supersedes
 # our earlier out-of-tree ring-size patch.
 #
-# Must be built AFTER the nvidia-nccl-cu12 pip install so --with-nccl finds
-# matching 2.30.4 headers. Wave 9c cu12 unification: the prior cu13
-# reference (HISTORICAL) diverged from the CUDA 12.9 base; cu12 matches.
+# Must be built AFTER the nvidia-nccl-cu13 pip install so --with-nccl finds
+# matching 2.30.4 headers. Wave 13 cu13 cascade: base rebuilt on CUDA 13 so
+# all artifacts share libcudart.so.13. (HISTORICAL: Wave 9c pinned cu12 to
+# match the CUDA 12.9 base; Wave 11 exposed the torch/vllm._C cu13 ABI
+# split this alignment was supposed to prevent.)
 # The plugin's ncclGinPlugin_v11/v12 symbols must
 # match the NCCL it is loaded alongside, or DeepEP's railedGinType check
 # (see csrc/kernels/backend/nccl.cu in DeepEP V2) fails.
