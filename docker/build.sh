@@ -124,8 +124,11 @@ if [[ -f "${PINS_ENV}" ]]; then
   echo "[build.sh]   MEGATRON_FORK=${MEGATRON_FORK:-<unset>}"
   echo "[build.sh]   MEGATRON_BRANCH=${MEGATRON_BRANCH:-<unset>}"
   echo "[build.sh]   MEGATRON_SHA=${MEGATRON_SHA:-<unset>}"
+  # Wave 9c cu12 unify: also forward NVIDIA_NCCL_PIN and BASE_IMAGE_FAST so
+  # pins.env drives the NCCL pip wheel flavor and the GHCR base tag.
   for VAR in DEEPEP_FORK DEEPEP_BRANCH DEEPEP_SHA \
-             MEGATRON_FORK MEGATRON_BRANCH MEGATRON_SHA; do
+             MEGATRON_FORK MEGATRON_BRANCH MEGATRON_SHA \
+             NVIDIA_NCCL_PIN BASE_IMAGE_FAST; do
     if [[ -n "${!VAR:-}" ]]; then
       PIN_BUILD_ARGS+=(--build-arg "${VAR}=${!VAR}")
     fi

@@ -60,7 +60,7 @@
 # =============================================================================
 
 ARG BUILD_MODE=fast
-ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.1-sm90a
+ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.2-sm90a
 ARG BASE_IMAGE_VANILLA=nvidia/cuda:12.9.0-devel-ubuntu24.04
 
 # =============================================================================
@@ -185,9 +185,16 @@ RUN set -eux; \
     rm -f /lib/x86_64-linux-gnu/libnccl.so* /usr/lib/x86_64-linux-gnu/libnccl.so*; \
     ldconfig
 
+# Wave 9c cu12 unification: NCCL wheel flavor sourced from pins.env
+# (NVIDIA_NCCL_PIN=nvidia-nccl-cu12>=2.30.4). Dockerfile default keeps cu12 to
+# match the CUDA 12.9 runtime in the base image. The prior hardcoded cu13
+# pin (HISTORICAL) diverged from the base's CUDA toolkit and is replaced by
+# the build-arg-driven value. Override with:
+#   docker build --build-arg NVIDIA_NCCL_PIN='nvidia-nccl-cu13>=2.30.4' ...
+ARG NVIDIA_NCCL_PIN=nvidia-nccl-cu12>=2.30.4
 RUN set -eux; \
     pip install --no-cache-dir --break-system-packages --no-deps \
-      "nvidia-nccl-cu13>=2.30.4"; \
+      "${NVIDIA_NCCL_PIN}"; \
     NCCL_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nccl/lib' -type d 2>/dev/null | head -1)"; \
     echo "NCCL_LIB=${NCCL_LIB}"; \
     test -n "${NCCL_LIB}"; \
@@ -224,8 +231,10 @@ RUN pip install --no-cache-dir --break-system-packages \
 # with "received count: 0" on AWS EFA once num_allocated_qps >= 5. Supersedes
 # our earlier out-of-tree ring-size patch.
 #
-# Must be built AFTER nvidia-nccl-cu13 pip install so --with-nccl finds
-# matching 2.30.4 headers. The plugin's ncclGinPlugin_v11/v12 symbols must
+# Must be built AFTER the nvidia-nccl-cu12 pip install so --with-nccl finds
+# matching 2.30.4 headers. Wave 9c cu12 unification: the prior cu13
+# reference (HISTORICAL) diverged from the CUDA 12.9 base; cu12 matches.
+# The plugin's ncclGinPlugin_v11/v12 symbols must
 # match the NCCL it is loaded alongside, or DeepEP's railedGinType check
 # (see csrc/kernels/backend/nccl.cu in DeepEP V2) fails.
 #
