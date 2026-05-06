@@ -444,8 +444,13 @@ ENV DEEP_EP_USE_V2_SHIM=0 \
     EP_EFA_RDMA_GBS=25.0
 
 # Bake tests and preflight into the image for one-shot validation.
+# train_step_shapeY.py is COPY'd twice: once to /opt/tests (stable home)
+# and once to /opt/ where train_qwen3_moe.py's importlib.util.spec_from_file_location
+# expects it. This closes the Wave 6 "kubectl cp on every run" gap.
 COPY docker/preflight.sh /opt/docker/preflight.sh
 COPY tests/train_qwen3_moe.py /opt/tests/train_qwen3_moe.py
+COPY tests/train_step_shapeY.py /opt/tests/train_step_shapeY.py
+COPY tests/train_step_shapeY.py /opt/train_step_shapeY.py
 COPY tests/verify_efa_traffic.sh /opt/tests/verify_efa_traffic.sh
 RUN chmod +x /opt/docker/preflight.sh /opt/tests/verify_efa_traffic.sh
 
