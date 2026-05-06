@@ -185,7 +185,7 @@ top. Pick based on your network posture and build-time budget.
 
 | Aspect | `--mode fast` (default) | `--mode vanilla` |
 |---|---|---|
-| Base image | `FROM ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a` | Inline 240-line stack from `nvidia/cuda:12.9.0-devel-ubuntu24.04` |
+| Base image | `FROM ghcr.io/antonai-work/deepep-v2-efa-base:v0.2.1-sm90a` | Inline 240-line stack from `nvidia/cuda:12.9.0-devel-ubuntu24.04` |
 | Build time | ~5-10 min (framework layer only) | ~45 min cold (compiles aws-ofi-nccl + DeepEP + Megatron + NeMo-RL) |
 | Network needs | GHCR pull (PAT with `read:packages` until the package flips public) | Docker Hub + efa-installer.amazonaws.com + GitHub clones only |
 | Reproducibility | Trusts the base image's SHA-digest | Fully reproducible from Dockerfile + repo contents |
@@ -199,8 +199,8 @@ every commit so a drift between them is caught by CI.
 The base image digest pinned by the fast path is:
 
 ```
-ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a
-  @ sha256:5083af841d926f63ff1eb98bdded6e3e23854330feabb53c9d910fff4899587c
+ghcr.io/antonai-work/deepep-v2-efa-base:v0.2.1-sm90a
+  @ sha256:5f6d45e42657c3ee3f20db9ca0f01f21c14c96c7538b598787c4b5bb9be5e974
 ```
 
 The base repo is at
