@@ -16,7 +16,7 @@
 #   --build-arg BUILD_MODE=vanilla
 #       Inline the full base stack (EFA userspace + NCCL + aws-ofi-nccl +
 #       GDRCopy + DeepEP V2 + patches) directly on top of
-#       nvidia/cuda:12.9.0-devel-ubuntu24.04, byte-identical to the base repo's
+#       nvidia/cuda:13.0.0-devel-ubuntu24.04, byte-identical to the base repo's
 #       Dockerfile at https://github.com/antonai-work/deepep-v2-efa-base.
 #       Use when you cannot reach GHCR or want end-to-end reproducibility
 #       from the vanilla NVIDIA CUDA image.
@@ -60,12 +60,12 @@
 # =============================================================================
 
 ARG BUILD_MODE=fast
-ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.1-sm90a
-ARG BASE_IMAGE_VANILLA=nvidia/cuda:12.9.0-devel-ubuntu24.04
+ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.2.1-sm90a
+ARG BASE_IMAGE_VANILLA=nvidia/cuda:13.0.0-devel-ubuntu24.04
 
 # =============================================================================
 # Stage 1a: base-fast
-#   Pull the pre-built base image from GHCR. Contains CUDA 12.9 + EFA 1.48.0 +
+#   Pull the pre-built base image from GHCR. Contains CUDA 13.0 + EFA 1.48.0 +
 #   aws-ofi-nccl @ 6e504db + NCCL 2.30.4 + GDRCopy 2.5.1 + DeepEP V2 + patches
 #   0001-0003. All LD paths and runtime env are already set.
 # =============================================================================
@@ -166,9 +166,9 @@ RUN set -eux; \
 # over building NCCL from source, so the JIT can find headers automatically)
 # -----------------------------------------------------------------------------
 RUN pip install --no-cache-dir --break-system-packages \
-      torch --index-url https://download.pytorch.org/whl/cu129 \
+      torch --index-url https://download.pytorch.org/whl/cu130 \
  || pip install --no-cache-dir --break-system-packages \
-      torch --index-url https://download.pytorch.org/whl/cu128
+      torch --index-url https://download.pytorch.org/whl/cu129
 
 # numpy<2 is required at runtime by torch.distributed.all_gather_object
 # (DeepEP V2's ElasticBuffer.__init__ calls it from get_nccl_comm_handle).
@@ -185,9 +185,16 @@ RUN set -eux; \
     rm -f /lib/x86_64-linux-gnu/libnccl.so* /usr/lib/x86_64-linux-gnu/libnccl.so*; \
     ldconfig
 
+# Wave 13 cu13 cascade: NCCL wheel flavor sourced from pins.env
+# (NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4). Dockerfile default matches the
+# CUDA 13.0 runtime in the base image v0.2.1-sm90a. The prior Wave 9c cu12
+# pin (HISTORICAL) matched the old CUDA 12.9 base; Wave 13 rebuilt base on
+# CUDA 13 so all artifacts share libcudart.so.13. Override with:
+#   docker build --build-arg NVIDIA_NCCL_PIN='nvidia-nccl-cu12>=2.30.4' ...
+ARG NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4
 RUN set -eux; \
     pip install --no-cache-dir --break-system-packages --no-deps \
-      "nvidia-nccl-cu13>=2.30.4"; \
+      "${NVIDIA_NCCL_PIN}"; \
     NCCL_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nccl/lib' -type d 2>/dev/null | head -1)"; \
     echo "NCCL_LIB=${NCCL_LIB}"; \
     test -n "${NCCL_LIB}"; \
@@ -208,7 +215,7 @@ RUN set -eux; \
 # The wheel only ships libnvshmem_host.so.X (versioned), but DeepEP's link
 # line uses `-l:libnvshmem_host.so` (unversioned). Create the symlink.
 RUN pip install --no-cache-dir --break-system-packages \
-      "nvidia-nvshmem-cu12>=3.3.9" \
+      "nvidia-nvshmem-cu13>=3.3.9" \
  && NVSHMEM_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nvshmem/lib' -type d 2>/dev/null | head -1)" \
  && test -n "${NVSHMEM_LIB}" && test -d "${NVSHMEM_LIB}" \
  && ls "${NVSHMEM_LIB}" \
@@ -224,8 +231,12 @@ RUN pip install --no-cache-dir --break-system-packages \
 # with "received count: 0" on AWS EFA once num_allocated_qps >= 5. Supersedes
 # our earlier out-of-tree ring-size patch.
 #
-# Must be built AFTER nvidia-nccl-cu13 pip install so --with-nccl finds
-# matching 2.30.4 headers. The plugin's ncclGinPlugin_v11/v12 symbols must
+# Must be built AFTER the nvidia-nccl-cu13 pip install so --with-nccl finds
+# matching 2.30.4 headers. Wave 13 cu13 cascade: base rebuilt on CUDA 13 so
+# all artifacts share libcudart.so.13. (HISTORICAL: Wave 9c pinned cu12 to
+# match the CUDA 12.9 base; Wave 11 exposed the torch/vllm._C cu13 ABI
+# split this alignment was supposed to prevent.)
+# The plugin's ncclGinPlugin_v11/v12 symbols must
 # match the NCCL it is loaded alongside, or DeepEP's railedGinType check
 # (see csrc/kernels/backend/nccl.cu in DeepEP V2) fails.
 #
@@ -274,6 +285,10 @@ RUN set -eux; \
 # When PR #612 merges upstream, flip DEEPEP_FORK/DEEPEP_BRANCH to vanilla and
 # drop the ./patches/ directory.
 # -----------------------------------------------------------------------------
+# Canonical values live in ../pins.env at the repo root. Both docker/build.sh
+# and ci/buildspec.yml source that file and pass the values via --build-arg,
+# which overrides these defaults. The hardcoded values below are retained as
+# a legacy-safety fallback so `docker build ...` still works in an emergency.
 ARG DEEPEP_FORK=https://github.com/dmvevents/DeepEP-1.git
 ARG DEEPEP_BRANCH=aws-efa-auto-qp-cap-v2
 ARG DEEPEP_SHA=146cc356aa00c39ac1590c05775e05b0f031e70c
@@ -339,11 +354,18 @@ FROM base-${BUILD_MODE} AS release
 ARG DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Redeclare the global NCCL pin ARG inside this stage so RUN can substitute it.
+ARG NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4
+
 # -----------------------------------------------------------------------------
 # Megatron-LM with patches 0004-0006 (Shape Y: DeepEP V2 ElasticBuffer support)
 # Layout matches PR #4632: 3 commits on top of NVIDIA/Megatron-LM@23dd639c.
 # Pinned to the SHA NeMo-RL 46be4e8 expects via its submodule.
 # -----------------------------------------------------------------------------
+# Canonical values live in ../pins.env at the repo root. Both docker/build.sh
+# and ci/buildspec.yml source that file and pass the values via --build-arg,
+# which overrides these defaults. The hardcoded values below are retained as
+# a legacy-safety fallback.
 ARG MEGATRON_FORK=https://github.com/dmvevents/Megatron-LM.git
 ARG MEGATRON_BRANCH=deepep-v2-elasticbuffer-support
 ARG MEGATRON_SHA=2f149cfc2c6ba682b47804c3061f566e7515b6fc
@@ -410,6 +432,30 @@ RUN pip install --no-cache-dir --break-system-packages \
       pybase64 \
       swanlab \
       decord
+
+# -----------------------------------------------------------------------------
+# Wave 13 NVSHMEM guard: torchdata / transformers / ray pull in torch which
+# pins nvidia-nvshmem-cu13==3.4.5 and downgrades the base image's 3.6.5.
+# DeepEP V2 _C.so in v0.2.1-sm90a was linked against NVSHMEM 3.6.x (the symbol
+# `nvshmem_selected_device_transport, version NVSHMEM` was introduced in 3.6).
+# Reinstall >= 3.6.0 after the pure-Python deps to restore the base ABI.
+# Also re-assert NCCL 2.30.4 in case the transitive torch install downgraded
+# it to 2.28.9 (cu13 wheel default pin).
+# -----------------------------------------------------------------------------
+RUN set -eux; \
+    pip install --no-cache-dir --break-system-packages --no-deps --force-reinstall \
+      "nvidia-nvshmem-cu13>=3.6.0" \
+      "${NVIDIA_NCCL_PIN}"; \
+    NVSHMEM_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nvshmem/lib' -type d 2>/dev/null | head -1)"; \
+    test -n "${NVSHMEM_LIB}"; \
+    HOST_SO="$(ls "${NVSHMEM_LIB}"/libnvshmem_host.so.* | head -1)"; \
+    ln -sf "$(basename "${HOST_SO}")" "${NVSHMEM_LIB}/libnvshmem_host.so"; \
+    NCCL_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nccl/lib' -type d 2>/dev/null | head -1)"; \
+    test -n "${NCCL_LIB}"; \
+    SO2="$(ls "${NCCL_LIB}"/libnccl.so.* 2>/dev/null | head -1)"; \
+    ln -sf "$(basename "${SO2}")" "${NCCL_LIB}/libnccl.so"; \
+    ldconfig; \
+    python3 -c "import deep_ep; assert hasattr(deep_ep, 'ElasticBuffer'); print('deep_ep.ElasticBuffer OK (post-NVSHMEM-guard)')"
 
 # -----------------------------------------------------------------------------
 # NO-SHIM INVARIANT: this image explicitly has no /opt/api-shim and no
