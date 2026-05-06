@@ -354,6 +354,9 @@ FROM base-${BUILD_MODE} AS release
 ARG DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# Redeclare the global NCCL pin ARG inside this stage so RUN can substitute it.
+ARG NVIDIA_NCCL_PIN=nvidia-nccl-cu13>=2.30.4
+
 # -----------------------------------------------------------------------------
 # Megatron-LM with patches 0004-0006 (Shape Y: DeepEP V2 ElasticBuffer support)
 # Layout matches PR #4632: 3 commits on top of NVIDIA/Megatron-LM@23dd639c.
@@ -429,6 +432,30 @@ RUN pip install --no-cache-dir --break-system-packages \
       pybase64 \
       swanlab \
       decord
+
+# -----------------------------------------------------------------------------
+# Wave 13 NVSHMEM guard: torchdata / transformers / ray pull in torch which
+# pins nvidia-nvshmem-cu13==3.4.5 and downgrades the base image's 3.6.5.
+# DeepEP V2 _C.so in v0.2.1-sm90a was linked against NVSHMEM 3.6.x (the symbol
+# `nvshmem_selected_device_transport, version NVSHMEM` was introduced in 3.6).
+# Reinstall >= 3.6.0 after the pure-Python deps to restore the base ABI.
+# Also re-assert NCCL 2.30.4 in case the transitive torch install downgraded
+# it to 2.28.9 (cu13 wheel default pin).
+# -----------------------------------------------------------------------------
+RUN set -eux; \
+    pip install --no-cache-dir --break-system-packages --no-deps --force-reinstall \
+      "nvidia-nvshmem-cu13>=3.6.0" \
+      "${NVIDIA_NCCL_PIN}"; \
+    NVSHMEM_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nvshmem/lib' -type d 2>/dev/null | head -1)"; \
+    test -n "${NVSHMEM_LIB}"; \
+    HOST_SO="$(ls "${NVSHMEM_LIB}"/libnvshmem_host.so.* | head -1)"; \
+    ln -sf "$(basename "${HOST_SO}")" "${NVSHMEM_LIB}/libnvshmem_host.so"; \
+    NCCL_LIB="$(find /usr/local/lib /usr/lib -path '*/nvidia/nccl/lib' -type d 2>/dev/null | head -1)"; \
+    test -n "${NCCL_LIB}"; \
+    SO2="$(ls "${NCCL_LIB}"/libnccl.so.* 2>/dev/null | head -1)"; \
+    ln -sf "$(basename "${SO2}")" "${NCCL_LIB}/libnccl.so"; \
+    ldconfig; \
+    python3 -c "import deep_ep; assert hasattr(deep_ep, 'ElasticBuffer'); print('deep_ep.ElasticBuffer OK (post-NVSHMEM-guard)')"
 
 # -----------------------------------------------------------------------------
 # NO-SHIM INVARIANT: this image explicitly has no /opt/api-shim and no
