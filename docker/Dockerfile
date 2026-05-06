@@ -25,7 +25,7 @@
 # the framework layer (Megatron-LM + NeMo-RL + patches) is single-sourced.
 #
 # Framework-layer pinned sources (both paths):
-#   Megatron-LM    dmvevents/Megatron-LM@2f149cfc on branch
+#   Megatron-LM    dmvevents/Megatron-LM@1aa3a7ec on branch
 #                  deepep-v2-elasticbuffer-support (PR #4632 = vanilla
 #                  Megatron 23dd639c + 3 Shape Y commits: ElasticBuffer
 #                  support, EventOverlap fallback, num_experts-explicit
@@ -60,7 +60,7 @@
 # =============================================================================
 
 ARG BUILD_MODE=fast
-ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.1-sm90a
+ARG BASE_IMAGE_FAST=ghcr.io/antonai-work/deepep-v2-efa-base:v0.1.0-sm90a
 ARG BASE_IMAGE_VANILLA=nvidia/cuda:12.9.0-devel-ubuntu24.04
 
 # =============================================================================
@@ -276,7 +276,7 @@ RUN set -eux; \
 # -----------------------------------------------------------------------------
 ARG DEEPEP_FORK=https://github.com/dmvevents/DeepEP-1.git
 ARG DEEPEP_BRANCH=aws-efa-auto-qp-cap-v2
-ARG DEEPEP_SHA=146cc356aa00c39ac1590c05775e05b0f031e70c
+ARG DEEPEP_SHA=c84dcac613c8df743a6487a312bbc966c745c600
 
 RUN set -eux; \
     git clone --recurse-submodules "${DEEPEP_FORK}" /opt/DeepEP; \
@@ -324,7 +324,7 @@ LABEL org.opencontainers.image.title="deepep-v2-efa-base" \
       org.opencontainers.image.source="https://github.com/antonai-work/deepep-v2-efa-base" \
       org.opencontainers.image.licenses="Apache-2.0" \
       deepep.branch="aws-efa-auto-qp-cap-v2" \
-      deepep.sha="146cc356aa00c39ac1590c05775e05b0f031e70c" \
+      deepep.sha="c84dcac613c8df743a6487a312bbc966c745c600" \
       aws-ofi-nccl.sha="6e504db3403931cde43a2335adcc73fbc69cccac" \
       efa.installer="1.48.0"
 
@@ -346,7 +346,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # -----------------------------------------------------------------------------
 ARG MEGATRON_FORK=https://github.com/dmvevents/Megatron-LM.git
 ARG MEGATRON_BRANCH=deepep-v2-elasticbuffer-support
-ARG MEGATRON_SHA=2f149cfc2c6ba682b47804c3061f566e7515b6fc
+ARG MEGATRON_SHA=1aa3a7ec76f255ce23cbcc94dbd8a7d49dcbb49d
 
 RUN set -eux; \
     git clone "${MEGATRON_FORK}" /opt/Megatron-LM; \
@@ -444,13 +444,8 @@ ENV DEEP_EP_USE_V2_SHIM=0 \
     EP_EFA_RDMA_GBS=25.0
 
 # Bake tests and preflight into the image for one-shot validation.
-# train_step_shapeY.py is COPY'd twice: once to /opt/tests (stable home)
-# and once to /opt/ where train_qwen3_moe.py's importlib.util.spec_from_file_location
-# expects it. This closes the Wave 6 "kubectl cp on every run" gap.
 COPY docker/preflight.sh /opt/docker/preflight.sh
 COPY tests/train_qwen3_moe.py /opt/tests/train_qwen3_moe.py
-COPY tests/train_step_shapeY.py /opt/tests/train_step_shapeY.py
-COPY tests/train_step_shapeY.py /opt/train_step_shapeY.py
 COPY tests/verify_efa_traffic.sh /opt/tests/verify_efa_traffic.sh
 RUN chmod +x /opt/docker/preflight.sh /opt/tests/verify_efa_traffic.sh
 
