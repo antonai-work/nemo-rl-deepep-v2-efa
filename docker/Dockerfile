@@ -274,6 +274,10 @@ RUN set -eux; \
 # When PR #612 merges upstream, flip DEEPEP_FORK/DEEPEP_BRANCH to vanilla and
 # drop the ./patches/ directory.
 # -----------------------------------------------------------------------------
+# Canonical values live in ../pins.env at the repo root. Both docker/build.sh
+# and ci/buildspec.yml source that file and pass the values via --build-arg,
+# which overrides these defaults. The hardcoded values below are retained as
+# a legacy-safety fallback so `docker build ...` still works in an emergency.
 ARG DEEPEP_FORK=https://github.com/dmvevents/DeepEP-1.git
 ARG DEEPEP_BRANCH=aws-efa-auto-qp-cap-v2
 ARG DEEPEP_SHA=146cc356aa00c39ac1590c05775e05b0f031e70c
@@ -344,6 +348,10 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Layout matches PR #4632: 3 commits on top of NVIDIA/Megatron-LM@23dd639c.
 # Pinned to the SHA NeMo-RL 46be4e8 expects via its submodule.
 # -----------------------------------------------------------------------------
+# Canonical values live in ../pins.env at the repo root. Both docker/build.sh
+# and ci/buildspec.yml source that file and pass the values via --build-arg,
+# which overrides these defaults. The hardcoded values below are retained as
+# a legacy-safety fallback.
 ARG MEGATRON_FORK=https://github.com/dmvevents/Megatron-LM.git
 ARG MEGATRON_BRANCH=deepep-v2-elasticbuffer-support
 ARG MEGATRON_SHA=2f149cfc2c6ba682b47804c3061f566e7515b6fc
