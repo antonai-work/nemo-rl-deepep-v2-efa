@@ -25,7 +25,7 @@
 # the framework layer (Megatron-LM + NeMo-RL + patches) is single-sourced.
 #
 # Framework-layer pinned sources (both paths):
-#   Megatron-LM    dmvevents/Megatron-LM@1aa3a7ec on branch
+#   Megatron-LM    dmvevents/Megatron-LM@2f149cfc on branch
 #                  deepep-v2-elasticbuffer-support (PR #4632 = vanilla
 #                  Megatron 23dd639c + 3 Shape Y commits: ElasticBuffer
 #                  support, EventOverlap fallback, num_experts-explicit
@@ -346,7 +346,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # -----------------------------------------------------------------------------
 ARG MEGATRON_FORK=https://github.com/dmvevents/Megatron-LM.git
 ARG MEGATRON_BRANCH=deepep-v2-elasticbuffer-support
-ARG MEGATRON_SHA=1aa3a7ec76f255ce23cbcc94dbd8a7d49dcbb49d
+ARG MEGATRON_SHA=2f149cfc2c6ba682b47804c3061f566e7515b6fc
 
 RUN set -eux; \
     git clone "${MEGATRON_FORK}" /opt/Megatron-LM; \
