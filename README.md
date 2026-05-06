@@ -3,20 +3,20 @@
 **Reproducible DeepEP V2 MoE training on AWS EFA, built from vanilla
 upstream sources + three open upstream PRs.**
 
-**Status:** Dual-path Dockerfile verified locally 2026-05-05 (fast via GHCR base + vanilla inline); CodeBuild CI configured; 3-step training loss 28.5→24.6 validated on 2× p5.48xlarge H100.
+**Status:** Dual-path Dockerfile verified locally 2026-05-06 (fast via GHCR base + vanilla inline); CodeBuild CI configured; 3-step training loss 21.57→20.05 validated on 2× p5.48xlarge H100. Last validated 2026-05-06 Wave 13.
 
 This repo packages a complete multi-stage Docker build chain and a
 Kubernetes manifest that produces a working Qwen3-30B-A3B MoE
 training stack on 2× p5.48xlarge (or p5en.48xlarge) H100/H200 nodes
-over AWS EFA — end-to-end validated 2026-05-05.
+over AWS EFA — end-to-end validated 2026-05-06.
 
 ## Sibling repos (reproducibility triad)
 
 | Repo | Purpose | Status |
 |---|---|---|
-| [deepep-v2-efa-base](https://github.com/antonai-work/deepep-v2-efa-base) | Base substrate (EFA + NCCL + DeepEP V2) | v0.1.0-sm90a released |
-| [nemo-rl-deepep-v2-efa](https://github.com/antonai-work/nemo-rl-deepep-v2-efa) | Training stack (this repo) | Dual-path build verified |
-| [vllm-deepep-v2-efa](https://github.com/antonai-work/vllm-deepep-v2-efa) | Inference stack (vLLM + TRT-LLM) | Dual-path build verified |
+| [deepep-v2-efa-base](https://github.com/antonai-work/deepep-v2-efa-base) | Base substrate (EFA + NCCL + DeepEP V2) | v0.2.1-sm90a released |
+| [nemo-rl-deepep-v2-efa](https://github.com/antonai-work/nemo-rl-deepep-v2-efa) | Training stack (this repo) | Dual-path build verified 2026-05-06 |
+| [vllm-deepep-v2-efa](https://github.com/antonai-work/vllm-deepep-v2-efa) | Inference stack (vLLM + TRT-LLM) | Dual-path build verified 2026-05-06 |
 
 Together, these three repos provide end-to-end DeepEP V2 MoE reproducibility on AWS EFA, from base substrate through training and inference.
 
@@ -51,17 +51,21 @@ Together, these three repos provide end-to-end DeepEP V2 MoE reproducibility on 
   for the aggregated cross-node EFA hardware-counter proof across
   all frameworks.
 
+## Validation
+
+Wave 13 cu13-unified stack validation: [`docs/VALIDATION-WAVE13-CU13-TRAINING-PASS.md`](docs/VALIDATION-WAVE13-CU13-TRAINING-PASS.md). Captures Shape Y 3-step training success with monotonic loss, NVSHMEM ABI resolution, and bash quoting bug fix. Image digest: `sha256:ae4855b9a8b173a48171f8b3da672c688d8c1e820c0301a0cb39777cccaea9f8`.
+
 ## Upstream PRs
 
 Five PRs filed 2026-04-28 through 2026-05-05, covering the full training + inference stack. All five are independent, EFA-specific, and safe on non-EFA fabrics:
 
-| Upstream repo | PR | Status (2026-05-05) | Applies to |
+| Upstream repo | PR | Status (2026-05-06) | Applies to |
 |---|---|---|---|
-| [deepseek-ai/DeepEP](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN, rebased 2026-05-05 | Base substrate (all frameworks) |
-| [NVIDIA/Megatron-LM](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | DRAFT | Training (this repo) |
-| [NVIDIA-NeMo/RL](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | DRAFT | Training (this repo) |
-| [NVIDIA-NeMo/RL](https://github.com/NVIDIA-NeMo/RL) | [#2411](https://github.com/NVIDIA-NeMo/RL/pull/2411) | DRAFT | Training (this repo) |
-| [sgl-project/sglang](https://github.com/sgl-project/sglang) | [#24443](https://github.com/sgl-project/sglang/pull/24443) | DRAFT | Inference (sibling repo) |
+| [deepseek-ai/DeepEP](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN, mergeable | Base substrate (all frameworks) |
+| [NVIDIA/Megatron-LM](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | OPEN, mergeable | Training (this repo) |
+| [NVIDIA-NeMo/RL](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | OPEN, mergeable | Training (this repo) |
+| [NVIDIA-NeMo/RL](https://github.com/NVIDIA-NeMo/RL) | [#2411](https://github.com/NVIDIA-NeMo/RL/pull/2411) | OPEN, mergeable | Training (this repo) |
+| [sgl-project/sglang](https://github.com/sgl-project/sglang) | [#24443](https://github.com/sgl-project/sglang/pull/24443) | OPEN, mergeable | Inference (sibling repo) |
 
 Plus: [vllm-project/vllm#41183](https://github.com/vllm-project/vllm/pull/41183) augmented with EFA traffic evidence via comment (OPEN, actively reviewed, inference sibling repo).
 

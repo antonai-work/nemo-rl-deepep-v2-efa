@@ -4,15 +4,15 @@ Live tracking of the three upstream PRs this repo depends on. When
 all three merge, this repo's `docker/Dockerfile` can drop the
 patch-apply step and clone vanilla upstream instead.
 
-Last updated: 2026-05-05.
+Last updated: 2026-05-06.
 
 ## Summary
 
 | Repo | PR | State | Estimate |
 |---|---|---|---|
-| [`deepseek-ai/DeepEP`](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN | After 2026-04-28 + 7 days. Rebased + pinged 2026-05-05. |
-| [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | DRAFT | Filed 2026-05-05. |
-| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | DRAFT | Filed 2026-05-05. |
+| [`deepseek-ai/DeepEP`](https://github.com/deepseek-ai/DeepEP) | [#612](https://github.com/deepseek-ai/DeepEP/pull/612) | OPEN, mergeable | After 2026-04-28 + 7 days. Rebased + pinged 2026-05-05. |
+| [`NVIDIA/Megatron-LM`](https://github.com/NVIDIA/Megatron-LM) | [#4632](https://github.com/NVIDIA/Megatron-LM/pull/4632) | OPEN, mergeable | Filed 2026-05-05. |
+| [`NVIDIA-NeMo/RL`](https://github.com/NVIDIA-NeMo/RL) | [#2410](https://github.com/NVIDIA-NeMo/RL/pull/2410) | OPEN, mergeable | Filed 2026-05-05. |
 
 ## PR #612: DeepEP AWS EFA optimizations
 
@@ -21,7 +21,7 @@ Last updated: 2026-05-05.
   (3 commits on top of `deepseek-ai/DeepEP@main`)
 - **Filed**: 2026-04-28
 - **Last activity**: 2026-05-05 (rebase + courtesy ping)
-- **State**: OPEN, 0 reviews, 1 comment (maintainer pending)
+- **State**: OPEN, mergeable, 0 reviews, 1 comment (maintainer pending)
 
 ### Commits
 
@@ -46,8 +46,8 @@ Last updated: 2026-05-05.
 - **Head branch**: `dmvevents/Megatron-LM:deepep-v2-elasticbuffer-support`
   (3 commits on top of `NVIDIA/Megatron-LM@main`)
 - **Filed**: 2026-05-05
-- **State**: DRAFT (validated standalone 2026-04-29 + validated as
-  integrated stack 2026-05-05)
+- **State**: OPEN, mergeable (validated standalone 2026-04-29 + validated as
+  integrated stack 2026-05-06)
 
 ### Commits
 
@@ -82,8 +82,8 @@ Bundled bug fix: resolves upstream issue #3999
 - **Head branch**: `dmvevents/RL:aws-efa-deepep-support`
   (1 commit on top of `NVIDIA-NeMo/RL@46be4e8`)
 - **Filed**: 2026-05-05
-- **State**: DRAFT (validated as part of integrated stack
-  2026-05-05)
+- **State**: OPEN, mergeable (validated as part of integrated stack
+  2026-05-06)
 - **Related**: resurrects closed PR
   [#2359](https://github.com/NVIDIA-NeMo/RL/pull/2359), closes
   issue [#1973](https://github.com/NVIDIA-NeMo/RL/issues/1973)

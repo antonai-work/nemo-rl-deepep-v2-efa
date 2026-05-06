@@ -144,6 +144,5 @@ this exercise.
 ## Tear-down
 ```
 kubectl delete -f tests/k8s/multi-node-training-h100.yaml
-/home/ubuntu/deepep-intergration/hpc-agent-stack/cuco-codesign/scripts/cluster-lock.sh \
-    --cluster h100 release
+# Release cluster lock if using shared infrastructure
 ```
