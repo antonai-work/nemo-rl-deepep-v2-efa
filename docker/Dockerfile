@@ -276,7 +276,7 @@ RUN set -eux; \
 # -----------------------------------------------------------------------------
 ARG DEEPEP_FORK=https://github.com/dmvevents/DeepEP-1.git
 ARG DEEPEP_BRANCH=aws-efa-auto-qp-cap-v2
-ARG DEEPEP_SHA=c84dcac613c8df743a6487a312bbc966c745c600
+ARG DEEPEP_SHA=146cc356aa00c39ac1590c05775e05b0f031e70c
 
 RUN set -eux; \
     git clone --recurse-submodules "${DEEPEP_FORK}" /opt/DeepEP; \
@@ -324,7 +324,7 @@ LABEL org.opencontainers.image.title="deepep-v2-efa-base" \
       org.opencontainers.image.source="https://github.com/antonai-work/deepep-v2-efa-base" \
       org.opencontainers.image.licenses="Apache-2.0" \
       deepep.branch="aws-efa-auto-qp-cap-v2" \
-      deepep.sha="c84dcac613c8df743a6487a312bbc966c745c600" \
+      deepep.sha="146cc356aa00c39ac1590c05775e05b0f031e70c" \
       aws-ofi-nccl.sha="6e504db3403931cde43a2335adcc73fbc69cccac" \
       efa.installer="1.48.0"
 
